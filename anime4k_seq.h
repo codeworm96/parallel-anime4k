@@ -1,16 +1,31 @@
 #ifndef ANIME4K_SEQ_H_
 #define ANIME4K_SEQ_H_
 
-typedef struct anime4k_seq_ctx anime4k_seq_ctx_t;
+#include "anime4k.h"
 
-anime4k_seq_ctx_t *anime4k_seq_init(
-    unsigned int width, unsigned int height, unsigned char *image,
-    unsigned int new_width, unsigned int new_height);
-
-void anime4k_seq_run(anime4k_seq_ctx_t *ctx);
-
-unsigned char *anime4k_seq_get_image(anime4k_seq_ctx_t *ctx);
-
-void anime4k_seq_free(anime4k_seq_ctx_t *ctx);
+class Anime4kSeq : public Anime4k {
+private:
+    unsigned int old_width_;
+    unsigned int old_height_;
+    unsigned char *image_;
+    unsigned int width_;
+    unsigned int height_;
+    double *original_;
+    double *enlarge_;
+    double *lum_;
+    double *preprocessing_;
+    double *gradients_;
+    double *final_;
+    unsigned char *result_;
+    double strength_preprocessing_;
+    double strength_push_;
+public:
+    Anime4kSeq(
+        unsigned int width, unsigned int height, unsigned char *image,
+        unsigned int new_width, unsigned int new_height);
+    virtual ~Anime4kSeq();
+    void run();
+    unsigned char *get_image() { return result_; }
+};
 
 #endif /* ANIME4K_SEQ_H_ */

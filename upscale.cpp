@@ -3,6 +3,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 
+#include "anime4k.h"
 #include "anime4k_seq.h"
 
 int main() {
@@ -23,10 +24,11 @@ int main() {
     unsigned int uwidth = width * 6;
     unsigned int uheight = height * 6;
 
-    anime4k_seq_ctx_t *ctx = anime4k_seq_init(width, height, image, uwidth, uheight);
-    anime4k_seq_run(ctx);
+    Anime4k* upscaler = new Anime4kSeq(width, height, image, uwidth, uheight);
 
-    image2 = anime4k_seq_get_image(ctx);
+    upscaler->run();
+
+    image2 = upscaler->get_image();
 
     error = lodepng_encode32_file("out.png", image2, uwidth, uheight);
 
@@ -34,7 +36,7 @@ int main() {
     if(error) printf("error %u: %s\n", error, lodepng_error_text(error));
 
     free(image);
-    anime4k_seq_free(ctx);
+    delete upscaler;
 
     return 0;
 }

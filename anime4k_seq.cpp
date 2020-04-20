@@ -3,24 +3,6 @@
 #include <stdlib.h>
 #include <math.h>
 
-struct anime4k_seq_ctx
-{
-    unsigned int old_width;
-    unsigned int old_height;
-    unsigned char *image;
-    unsigned int width;
-    unsigned int height;
-    double *original;
-    double *enlarge;
-    double *lum;
-    double *preprocessing;
-    double *gradients;
-    double *final;
-    unsigned char *result;
-    double strength_preprocessing;
-    double strength_push;
-};
-
 static inline double min(double a, double b)
 {
     return a < b ? a : b;
@@ -39,38 +21,34 @@ static inline double max3v(double a, double b, double c) {
     return max(max(a, b), c);
 }
 
-anime4k_seq_ctx_t *anime4k_seq_init(
+Anime4kSeq::Anime4kSeq(
     unsigned int width, unsigned int height, unsigned char *image,
     unsigned int new_width, unsigned int new_height)
 {
-    anime4k_seq_ctx_t *res =
-        (anime4k_seq_ctx_t *)malloc(sizeof(anime4k_seq_ctx_t));
-
-    res->old_width = width;
-    res->old_height = height;
-    res->image = image;
-    res->width = new_width;
-    res->height = new_height;
+    old_width_ = width;
+    old_height_ = height;
+    image_ = image;
+    width_ = new_width;
+    height_ = new_height;
 
     /* ghost pixels added to avoid out-of-bounds */
     unsigned int old_pixels = (width + 2) * (height + 2);
     unsigned int pixels = (new_width + 2) * (new_height + 2);
 
-    res->original = (double *)malloc(3 * old_pixels * sizeof(double));
-    res->enlarge = (double *)malloc(3 * pixels * sizeof(double));
-    res->lum = (double *)malloc(pixels * sizeof(double));
-    res->preprocessing = (double *)malloc(3 * pixels * sizeof(double));
-    res->gradients = (double *)malloc(pixels * sizeof(double));
-    res->final = (double *)malloc(3 * pixels * sizeof(double));
+    original_ = new double[3 * old_pixels];
+    enlarge_ = new double[3 * pixels];
+    lum_ = new double[pixels];
+    preprocessing_ = new double[3 * pixels];
+    gradients_ = new double[pixels];
+    final_ = new double[3 * pixels];
 
     // result does not need ghost pixels
-    res->result = (unsigned char *)malloc(4 * new_width * new_height * sizeof(unsigned char));
+    result_ = new unsigned char[4 * new_width * new_height];
 
-    res->strength_preprocessing =
-        min((double)res->width / res->old_width / 6.0, 1.0);
-    res->strength_push =
-        min((double)res->width / res->old_width / 2.0, 1.0);
-    return res;
+    strength_preprocessing_ =
+        min((double)new_width / width / 6.0, 1.0);
+    strength_push_ =
+        min((double)new_width / width / 2.0, 1.0);
 }
 
 static void extend(double *buf, unsigned int width, unsigned int height)
@@ -133,19 +111,20 @@ static void extend_rgb(double *buf, unsigned int width, unsigned int height)
     }
 }
 
-static void decode(anime4k_seq_ctx_t *ctx)
+static void decode(unsigned int width, unsigned int height,
+    unsigned char *src, double *dst)
 {
-    for (int i = 0; i < ctx->old_height; i++) {
-        for (int j = 0; j < ctx->old_width; j++) {
-            int old_ix = 4 * (i * ctx->old_width + j);
-            int new_ix = 3 * ((i + 1) * (ctx->old_width + 2) + j + 1);
-            ctx->original[new_ix] = ctx->image[old_ix] / 255.0;
-            ctx->original[new_ix + 1] = ctx->image[old_ix + 1] / 255.0;
-            ctx->original[new_ix + 2] = ctx->image[old_ix + 2] / 255.0;
+    for (int i = 0; i < height; i++) {
+        for (int j = 0; j < width; j++) {
+            int old_ix = 4 * (i * width + j);
+            int new_ix = 3 * ((i + 1) * (width + 2) + j + 1);
+            dst[new_ix] = src[old_ix] / 255.0;
+            dst[new_ix + 1] = src[old_ix + 1] / 255.0;
+            dst[new_ix + 2] = src[old_ix + 2] / 255.0;
         }
     }
 
-    extend_rgb(ctx->original, ctx->old_width, ctx->old_height);
+    extend_rgb(dst, width, height);
 }
 
 static inline double interpolate(
@@ -157,12 +136,14 @@ static inline double interpolate(
     return l * (1.0 - g) + r * g;
 }
 
-static void linear_upscale(anime4k_seq_ctx_t *ctx)
+static void linear_upscale(
+    unsigned int old_width, unsigned int old_height, double *src,
+    unsigned int width, unsigned int height, double *dst)
 {
-    for (int i = 0; i < ctx->height; i++) {
-        for (int j = 0; j < ctx->width; j++) {
-            double x = (double)(i * ctx->old_height) / ctx->height;
-            double y = (double)(j * ctx->old_width) / ctx->width;
+    for (int i = 0; i < height; i++) {
+        for (int j = 0; j < width; j++) {
+            double x = (double)(i * old_height) / height;
+            double y = (double)(j * old_width) / width;
             double floor_x = floor(x);
             double floor_y = floor(y);
             int h = (int)floor_x + 1;
@@ -170,66 +151,68 @@ static void linear_upscale(anime4k_seq_ctx_t *ctx)
             double f = x - floor_x;
             double g = y - floor_y;
 
-            int ix = 3 * ((i + 1) * (ctx->width + 2) + j + 1);
-            int tl = 3 * (h * (ctx->old_width + 2) + w);
+            int ix = 3 * ((i + 1) * (width + 2) + j + 1);
+            int tl = 3 * (h * (old_width + 2) + w);
             int tr = tl + 3;
-            int bl = tl + 3 * (ctx->old_width + 2);
+            int bl = tl + 3 * (old_width + 2);
             int br = bl + 3;
 
-            ctx->enlarge[ix] = interpolate(
-                ctx->original[tl], ctx->original[tr],
-                ctx->original[bl], ctx->original[br], f, g);
+            dst[ix] = interpolate(
+                src[tl], src[tr],
+                src[bl], src[br], f, g);
 
-            ctx->enlarge[ix + 1] = interpolate(
-                ctx->original[tl + 1], ctx->original[tr + 1],
-                ctx->original[bl + 1], ctx->original[br + 1], f, g);
+            dst[ix + 1] = interpolate(
+                src[tl + 1], src[tr + 1],
+                src[bl + 1], src[br + 1], f, g);
 
-            ctx->enlarge[ix + 2] = interpolate(
-                ctx->original[tl + 2], ctx->original[tr + 2],
-                ctx->original[bl + 2], ctx->original[br + 2], f, g);
+            dst[ix + 2] = interpolate(
+                src[tl + 2], src[tr + 2],
+                src[bl + 2], src[br + 2], f, g);
         }
     }
 
-    extend_rgb(ctx->enlarge, ctx->width, ctx->height);
+    extend_rgb(dst, width, height);
 }
 
-static void compute_luminance(anime4k_seq_ctx_t *ctx, double *image)
+static void compute_luminance(
+    unsigned int width, unsigned int height, double *src, double *dst)
 {
-    for (int i = 0; i < ctx->height + 2; i++) {
-        for (int j = 0; j < ctx->width + 2; j++) {
-            int lum_ix = i * (ctx->width + 2) + j;
+    for (int i = 0; i < height + 2; i++) {
+        for (int j = 0; j < width + 2; j++) {
+            int lum_ix = i * (width + 2) + j;
             int ix = 3 * lum_ix;
 
-            ctx->lum[lum_ix] =
-                (image[ix] * 2 + image[ix + 1] * 3 + image[ix + 2]) / 6;
+            dst[lum_ix] =
+                (src[ix] * 2 + src[ix + 1] * 3 + src[ix + 2]) / 6;
         }
     }
 }
 
-static inline void get_largest(anime4k_seq_ctx_t *ctx,
+static inline void get_largest(double strength, double *image, double *lum,
     double color[4], int cc, int a, int b, int c)
 {
-    double strength = ctx->strength_preprocessing;
-    double new_lum = ctx->lum[cc] * (1.0 - strength) +
-        ((ctx->lum[a] + ctx->lum[b] + ctx->lum[c]) / 3.0) * strength;
+    double new_lum = lum[cc] * (1.0 - strength) +
+        ((lum[a] + lum[b] + lum[c]) / 3.0) * strength;
     
     if (new_lum > color[3]) {
-        color[0] = ctx->enlarge[cc * 3] * (1.0 - strength) +
-            ((ctx->enlarge[a * 3] + ctx->enlarge[b * 3] + ctx->enlarge[c * 3]) / 3.0) * strength;
-        color[1] = ctx->enlarge[cc * 3 + 1] * (1.0 - strength) +
-            ((ctx->enlarge[a * 3 + 1] + ctx->enlarge[b * 3 + 1] + ctx->enlarge[c * 3 + 1]) / 3.0) * strength;
-        color[2] = ctx->enlarge[cc * 3 + 2] * (1.0 - strength) +
-            ((ctx->enlarge[a * 3 + 2] + ctx->enlarge[b * 3 + 2] + ctx->enlarge[c * 3 + 2]) / 3.0) * strength;
+        color[0] = image[cc * 3] * (1.0 - strength) +
+            ((image[a * 3] + image[b * 3] + image[c * 3]) / 3.0) * strength;
+        color[1] = image[cc * 3 + 1] * (1.0 - strength) +
+            ((image[a * 3 + 1] + image[b * 3 + 1] + image[c * 3 + 1]) / 3.0) * strength;
+        color[2] = image[cc * 3 + 2] * (1.0 - strength) +
+            ((image[a * 3 + 2] + image[b * 3 + 2] + image[c * 3 + 2]) / 3.0) * strength;
         color[3] = new_lum;
     }
 }
 
-static void preprocess(anime4k_seq_ctx_t *ctx)
+static void preprocess(
+    double strength, unsigned int width, unsigned int height,
+    double *image, double *lum, double *dst)
 {
-    unsigned int new_width = ctx->width + 2;
+    unsigned int new_width = width + 2;
 
-    for (int i = 1; i <= ctx->height; i++) {
-        for (int j = 1; j <= ctx->width; j++) {
+    for (int i = 1; i <= height; i++) {
+        for (int j = 1; j <= width; j++) {
             /*
              * [tl  t tr]
              * [ l cc  r]
@@ -245,20 +228,20 @@ static void preprocess(anime4k_seq_ctx_t *ctx)
             int bl_ix = b_ix - 1;
             int br_ix = b_ix + 1;
 
-            double cc = ctx->lum[cc_ix];
-            double r = ctx->lum[r_ix];
-            double l = ctx->lum[l_ix];
-            double t = ctx->lum[t_ix];
-            double tl = ctx->lum[tl_ix];
-            double tr = ctx->lum[tr_ix];
-            double b = ctx->lum[b_ix];
-            double bl = ctx->lum[bl_ix];
-            double br = ctx->lum[br_ix];
+            double cc = lum[cc_ix];
+            double r = lum[r_ix];
+            double l = lum[l_ix];
+            double t = lum[t_ix];
+            double tl = lum[tl_ix];
+            double tr = lum[tr_ix];
+            double b = lum[b_ix];
+            double bl = lum[bl_ix];
+            double br = lum[br_ix];
 
             double color[4];
-            color[0] = ctx->enlarge[3 * cc_ix];
-            color[1] = ctx->enlarge[3 * cc_ix + 1];
-            color[2] = ctx->enlarge[3 * cc_ix + 2];
+            color[0] = image[3 * cc_ix];
+            color[1] = image[3 * cc_ix + 1];
+            color[2] = image[3 * cc_ix + 2];
             color[3] = cc;
 
             /* pattern 0 and 4 */
@@ -266,12 +249,14 @@ static void preprocess(anime4k_seq_ctx_t *ctx)
             double minLight = min3v(tl, t, tr);
 
             if (minLight > cc && minLight > maxDark) {
-                get_largest(ctx, color, cc_ix, tl_ix, t_ix, tr_ix);
+                get_largest(strength, image, lum, color,
+                    cc_ix, tl_ix, t_ix, tr_ix);
             } else {
                 maxDark = max3v(tl, t, tr);
                 minLight = min3v(br, b, bl);
                 if (minLight > cc && minLight > maxDark) {
-                    get_largest(ctx, color, cc_ix, br_ix, b_ix, bl_ix);
+                    get_largest(strength, image, lum, color,
+                        cc_ix, br_ix, b_ix, bl_ix);
                 }
             }
 
@@ -280,12 +265,14 @@ static void preprocess(anime4k_seq_ctx_t *ctx)
             minLight = min3v(r, t, tr);
 
             if (minLight > maxDark) {
-                get_largest(ctx, color, cc_ix, r_ix, t_ix, tr_ix);
+                get_largest(strength, image, lum, color,
+                    cc_ix, r_ix, t_ix, tr_ix);
             } else {
                 maxDark = max3v(cc, r, t);
                 minLight = min3v(bl, l, b);
                 if (minLight > maxDark) {
-                    get_largest(ctx, color, cc_ix, bl_ix, l_ix, b_ix);
+                    get_largest(strength, image, lum, color,
+                        cc_ix, bl_ix, l_ix, b_ix);
                 }
             }
 
@@ -294,12 +281,14 @@ static void preprocess(anime4k_seq_ctx_t *ctx)
             minLight = min3v(r, br, tr);
 
             if (minLight > cc && minLight > maxDark) {
-                get_largest(ctx, color, cc_ix, r_ix, br_ix, tr_ix);
+                get_largest(strength, image, lum, color,
+                    cc_ix, r_ix, br_ix, tr_ix);
             } else {
                 maxDark = max3v(r, br, tr);
                 minLight = min3v(l, tl, bl);
                 if (minLight > cc && minLight > maxDark) {
-                    get_largest(ctx, color, cc_ix, l_ix, tl_ix, bl_ix);
+                    get_largest(strength, image, lum, color,
+                        cc_ix, l_ix, tl_ix, bl_ix);
                 }
             }
 
@@ -308,22 +297,24 @@ static void preprocess(anime4k_seq_ctx_t *ctx)
             minLight = min3v(r, br, b);
 
             if (minLight > maxDark) {
-                get_largest(ctx, color, cc_ix, r_ix, br_ix, b_ix);
+                get_largest(strength, image, lum, color,
+                    cc_ix, r_ix, br_ix, b_ix);
             } else {
                 maxDark = max3v(cc, r, b);
                 minLight = min3v(t, l, tl);
                 if (minLight > maxDark) {
-                    get_largest(ctx, color, cc_ix, t_ix, l_ix, tl_ix);
+                    get_largest(strength, image, lum, color,
+                        cc_ix, t_ix, l_ix, tl_ix);
                 }
             }
 
-            ctx->preprocessing[3 * cc_ix] = color[0];
-            ctx->preprocessing[3 * cc_ix + 1] = color[1];
-            ctx->preprocessing[3 * cc_ix + 2] = color[2];
+            dst[3 * cc_ix] = color[0];
+            dst[3 * cc_ix + 1] = color[1];
+            dst[3 * cc_ix + 2] = color[2];
         }
     }
 
-    extend_rgb(ctx->preprocessing, ctx->width, ctx->height);
+    extend_rgb(dst, width, height);
 }
 
 static inline double clamp(double x, double lower, double upper)
@@ -331,12 +322,13 @@ static inline double clamp(double x, double lower, double upper)
     return x < lower ? lower : (x > upper ? upper : x);
 }
 
-static void compute_gradient(anime4k_seq_ctx_t *ctx)
+static void compute_gradient(unsigned int width, unsigned int height,
+    double *src, double *dst)
 {
-    unsigned int new_width = ctx->width + 2;
+    unsigned int new_width = width + 2;
 
-    for (int i = 1; i <= ctx->height; i++) {
-        for (int j = 1; j <= ctx->width; j++) {
+    for (int i = 1; i <= height; i++) {
+        for (int j = 1; j <= width; j++) {
             /*
              * [tl  t tr]
              * [ l cc  r]
@@ -352,15 +344,15 @@ static void compute_gradient(anime4k_seq_ctx_t *ctx)
             int bl_ix = b_ix - 1;
             int br_ix = b_ix + 1;
 
-            double cc = ctx->lum[cc_ix];
-            double r = ctx->lum[r_ix];
-            double l = ctx->lum[l_ix];
-            double t = ctx->lum[t_ix];
-            double tl = ctx->lum[tl_ix];
-            double tr = ctx->lum[tr_ix];
-            double b = ctx->lum[b_ix];
-            double bl = ctx->lum[bl_ix];
-            double br = ctx->lum[br_ix];
+            double cc = src[cc_ix];
+            double r = src[r_ix];
+            double l = src[l_ix];
+            double t = src[t_ix];
+            double tl = src[tl_ix];
+            double tr = src[tr_ix];
+            double b = src[b_ix];
+            double bl = src[bl_ix];
+            double br = src[br_ix];
 
             /* Horizontal Gradient
              * [-1  0  1]
@@ -376,21 +368,17 @@ static void compute_gradient(anime4k_seq_ctx_t *ctx)
              */
             double ygrad = bl - tl + b + b - t - t + br - tr;
 
-            ctx->gradients[cc_ix] =
+            dst[cc_ix] =
                 1.0 - clamp(sqrt(xgrad * xgrad + ygrad * ygrad), 0.0, 1.0);
         }
     }
 
-    extend(ctx->gradients, ctx->width, ctx->height);
+    extend(dst, width, height);
 }
 
-static inline void get_average(anime4k_seq_ctx_t *ctx,
+static inline void get_average(double strength, double *src, double *dst,
     int cc, int a, int b, int c)
 {
-    double strength = ctx->strength_push;
-    double *src = ctx->preprocessing;
-    double *dst = ctx->final;
-
     dst[cc * 3] = src[cc * 3] * (1.0 - strength) +
         ((src[a * 3] + src[b * 3] + src[c * 3]) / 3.0) * strength;
     dst[cc * 3 + 1] = src[cc * 3 + 1] * (1.0 - strength) +
@@ -399,12 +387,13 @@ static inline void get_average(anime4k_seq_ctx_t *ctx,
         ((src[a * 3 + 2] + src[b * 3 + 2] + src[c * 3 + 2]) / 3.0) * strength;
 }
 
-static void push(anime4k_seq_ctx_t *ctx)
+static void push(double strength, unsigned int width, unsigned int height,
+    double *image, double *gradients, double *dst)
 {
-    unsigned int new_width = ctx->width + 2;
+    unsigned int new_width = width + 2;
 
-    for (int i = 1; i <= ctx->height; i++) {
-        for (int j = 1; j <= ctx->width; j++) {
+    for (int i = 1; i <= height; i++) {
+        for (int j = 1; j <= width; j++) {
             /*
              * [tl  t tr]
              * [ l cc  r]
@@ -420,28 +409,30 @@ static void push(anime4k_seq_ctx_t *ctx)
             int bl_ix = b_ix - 1;
             int br_ix = b_ix + 1;
 
-            double cc = ctx->gradients[cc_ix];
-            double r = ctx->gradients[r_ix];
-            double l = ctx->gradients[l_ix];
-            double t = ctx->gradients[t_ix];
-            double tl = ctx->gradients[tl_ix];
-            double tr = ctx->gradients[tr_ix];
-            double b = ctx->gradients[b_ix];
-            double bl = ctx->gradients[bl_ix];
-            double br = ctx->gradients[br_ix];
+            double cc = gradients[cc_ix];
+            double r = gradients[r_ix];
+            double l = gradients[l_ix];
+            double t = gradients[t_ix];
+            double tl = gradients[tl_ix];
+            double tr = gradients[tr_ix];
+            double b = gradients[b_ix];
+            double bl = gradients[bl_ix];
+            double br = gradients[br_ix];
 
             /* pattern 0 and 4 */
             double maxDark = max3v(br, b, bl);
             double minLight = min3v(tl, t, tr);
 
             if (minLight > cc && minLight > maxDark) {
-                get_average(ctx, cc_ix, tl_ix, t_ix, tr_ix);
+                get_average(strength, image, dst,
+                    cc_ix, tl_ix, t_ix, tr_ix);
                 continue;
             } else {
                 maxDark = max3v(tl, t, tr);
                 minLight = min3v(br, b, bl);
                 if (minLight > cc && minLight > maxDark) {
-                    get_average(ctx, cc_ix, br_ix, b_ix, bl_ix);
+                    get_average(strength, image, dst,
+                        cc_ix, br_ix, b_ix, bl_ix);
                     continue;
                 }
             }
@@ -451,13 +442,15 @@ static void push(anime4k_seq_ctx_t *ctx)
             minLight = min3v(r, t, tr);
 
             if (minLight > maxDark) {
-                get_average(ctx, cc_ix, r_ix, t_ix, tr_ix);
+                get_average(strength, image, dst,
+                    cc_ix, r_ix, t_ix, tr_ix);
                 continue;
             } else {
                 maxDark = max3v(cc, r, t);
                 minLight = min3v(bl, l, b);
                 if (minLight > maxDark) {
-                    get_average(ctx, cc_ix, bl_ix, l_ix, b_ix);
+                    get_average(strength, image, dst,
+                        cc_ix, bl_ix, l_ix, b_ix);
                     continue;
                 }
             }
@@ -467,13 +460,15 @@ static void push(anime4k_seq_ctx_t *ctx)
             minLight = min3v(r, br, tr);
 
             if (minLight > cc && minLight > maxDark) {
-                get_average(ctx, cc_ix, r_ix, br_ix, tr_ix);
+                get_average(strength, image, dst,
+                    cc_ix, r_ix, br_ix, tr_ix);
                 continue;
             } else {
                 maxDark = max3v(r, br, tr);
                 minLight = min3v(l, tl, bl);
                 if (minLight > cc && minLight > maxDark) {
-                    get_average(ctx, cc_ix, l_ix, tl_ix, bl_ix);
+                    get_average(strength, image, dst,
+                        cc_ix, l_ix, tl_ix, bl_ix);
                     continue;
                 }
             }
@@ -483,21 +478,23 @@ static void push(anime4k_seq_ctx_t *ctx)
             minLight = min3v(r, br, b);
 
             if (minLight > maxDark) {
-                get_average(ctx, cc_ix, r_ix, br_ix, b_ix);
+                get_average(strength, image, dst,
+                    cc_ix, r_ix, br_ix, b_ix);
                 continue;
             } else {
                 maxDark = max3v(cc, r, b);
                 minLight = min3v(t, l, tl);
                 if (minLight > maxDark) {
-                    get_average(ctx, cc_ix, t_ix, l_ix, tl_ix);
+                    get_average(strength, image, dst,
+                        cc_ix, t_ix, l_ix, tl_ix);
                     continue;
                 }
             }
 
             /* fallback */
-            ctx->final[3 * cc_ix] = ctx->preprocessing[3 * cc_ix];
-            ctx->final[3 * cc_ix + 1] = ctx->preprocessing[3 * cc_ix + 1];
-            ctx->final[3 * cc_ix + 2] = ctx->preprocessing[3 * cc_ix + 2];
+            dst[3 * cc_ix] = image[3 * cc_ix];
+            dst[3 * cc_ix + 1] = image[3 * cc_ix + 1];
+            dst[3 * cc_ix + 2] = image[3 * cc_ix + 2];
         }
     }
 
@@ -510,46 +507,43 @@ static inline unsigned char quantize(double x)
     return r < 0 ? 0 : (r > 255 ? 255 : r);
 }
 
-static void encode(anime4k_seq_ctx_t *ctx)
+static void encode(unsigned int width, unsigned int height, double *src,
+    unsigned char *dst)
 {
-    for (int i = 0; i < ctx->height; i++) {
-        for (int j = 0; j < ctx->width; j++) {
-            int old_ix = 3 * ((i + 1) * (ctx->width + 2) + j + 1);
-            int new_ix = 4 * (i * ctx->width + j);
+    for (int i = 0; i < height; i++) {
+        for (int j = 0; j < width; j++) {
+            int old_ix = 3 * ((i + 1) * (width + 2) + j + 1);
+            int new_ix = 4 * (i * width + j);
 
-            ctx->result[new_ix] = quantize(ctx->final[old_ix]);
-            ctx->result[new_ix + 1] = quantize(ctx->final[old_ix + 1]);
-            ctx->result[new_ix + 2] = quantize(ctx->final[old_ix + 2]);
-            ctx->result[new_ix + 3] = 255;
+            dst[new_ix] = quantize(src[old_ix]);
+            dst[new_ix + 1] = quantize(src[old_ix + 1]);
+            dst[new_ix + 2] = quantize(src[old_ix + 2]);
+            dst[new_ix + 3] = 255;
         }
     }
 }
 
-void anime4k_seq_run(anime4k_seq_ctx_t *ctx)
+void Anime4kSeq::run()
 {
-    decode(ctx);
-    linear_upscale(ctx);
-    compute_luminance(ctx, ctx->enlarge);
-    preprocess(ctx);
-    compute_luminance(ctx, ctx->preprocessing);
-    compute_gradient(ctx);
-    push(ctx);
-    encode(ctx);
+    decode(old_width_, old_height_, image_, original_);
+    linear_upscale(old_width_, old_height_, original_,
+        width_, height_, enlarge_);
+    compute_luminance(width_, height_, enlarge_, lum_);
+    preprocess(strength_preprocessing_, width_, height_,
+        enlarge_, lum_, preprocessing_);
+    compute_luminance(width_, height_, preprocessing_, lum_);
+    compute_gradient(width_, height_, lum_, gradients_);
+    push(strength_push_, width_, height_, preprocessing_, gradients_, final_);
+    encode(width_, height_, final_, result_);
 }
 
-unsigned char *anime4k_seq_get_image(anime4k_seq_ctx_t *ctx)
+Anime4kSeq::~Anime4kSeq()
 {
-    return ctx->result;
-}
-
-void anime4k_seq_free(anime4k_seq_ctx_t *ctx)
-{
-    free(ctx->original);
-    free(ctx->enlarge);
-    free(ctx->lum);
-    free(ctx->preprocessing);
-    free(ctx->gradients);
-    free(ctx->final);
-    free(ctx->result);
-    free(ctx);
+    delete [] original_;
+    delete [] enlarge_;
+    delete [] lum_;
+    delete [] preprocessing_;
+    delete [] gradients_;
+    delete [] final_;
+    delete [] result_;
 }
