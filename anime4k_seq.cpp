@@ -46,9 +46,9 @@ Anime4kSeq::Anime4kSeq(
     result_ = new unsigned char[4 * new_width * new_height];
 
     strength_preprocessing_ =
-        min((float)new_width / width / 6.0, 1.0);
+        min((float)new_width / width / 6, 1.0f);
     strength_push_ =
-        min((float)new_width / width / 2.0, 1.0);
+        min((float)new_width / width / 2, 1.0f);
 }
 
 static void extend(float *buf, unsigned int width, unsigned int height)
@@ -118,9 +118,9 @@ static void decode(unsigned int width, unsigned int height,
         for (unsigned int j = 0; j < width; j++) {
             int old_ix = 4 * (i * width + j);
             int new_ix = 3 * ((i + 1) * (width + 2) + j + 1);
-            dst[new_ix] = src[old_ix] / 255.0;
-            dst[new_ix + 1] = src[old_ix + 1] / 255.0;
-            dst[new_ix + 2] = src[old_ix + 2] / 255.0;
+            dst[new_ix] = src[old_ix] / 255.0f;
+            dst[new_ix + 1] = src[old_ix + 1] / 255.0f;
+            dst[new_ix + 2] = src[old_ix + 2] / 255.0f;
         }
     }
 
@@ -131,9 +131,9 @@ static inline float interpolate(
     float tl, float tr,
     float bl, float br, float f, float g)
 {
-    float l = tl * (1.0 - f) + bl * f;
-    float r = tr * (1.0 - f) + br * f;
-    return l * (1.0 - g) + r * g;
+    float l = tl * (1 - f) + bl * f;
+    float r = tr * (1 - f) + br * f;
+    return l * (1 - g) + r * g;
 }
 
 static void linear_upscale(
@@ -191,16 +191,16 @@ static void compute_luminance(
 static inline void get_largest(float strength, float *image, float *lum,
     float color[4], int cc, int a, int b, int c)
 {
-    float new_lum = lum[cc] * (1.0 - strength) +
-        ((lum[a] + lum[b] + lum[c]) / 3.0) * strength;
+    float new_lum = lum[cc] * (1 - strength) +
+        ((lum[a] + lum[b] + lum[c]) / 3) * strength;
     
     if (new_lum > color[3]) {
-        color[0] = image[cc * 3] * (1.0 - strength) +
-            ((image[a * 3] + image[b * 3] + image[c * 3]) / 3.0) * strength;
-        color[1] = image[cc * 3 + 1] * (1.0 - strength) +
-            ((image[a * 3 + 1] + image[b * 3 + 1] + image[c * 3 + 1]) / 3.0) * strength;
-        color[2] = image[cc * 3 + 2] * (1.0 - strength) +
-            ((image[a * 3 + 2] + image[b * 3 + 2] + image[c * 3 + 2]) / 3.0) * strength;
+        color[0] = image[cc * 3] * (1 - strength) +
+            ((image[a * 3] + image[b * 3] + image[c * 3]) / 3) * strength;
+        color[1] = image[cc * 3 + 1] * (1 - strength) +
+            ((image[a * 3 + 1] + image[b * 3 + 1] + image[c * 3 + 1]) / 3) * strength;
+        color[2] = image[cc * 3 + 2] * (1 - strength) +
+            ((image[a * 3 + 2] + image[b * 3 + 2] + image[c * 3 + 2]) / 3) * strength;
         color[3] = new_lum;
     }
 }
@@ -368,7 +368,7 @@ static void compute_gradient(unsigned int width, unsigned int height,
             float ygrad = bl - tl + b + b - t - t + br - tr;
 
             dst[cc_ix] =
-                1.0 - clamp(sqrt(xgrad * xgrad + ygrad * ygrad), 0.0, 1.0);
+                1.0f - clamp(sqrt(xgrad * xgrad + ygrad * ygrad), 0.0f, 1.0f);
         }
     }
 
@@ -378,12 +378,12 @@ static void compute_gradient(unsigned int width, unsigned int height,
 static inline void get_average(float strength, float *src, float *dst,
     int cc, int a, int b, int c)
 {
-    dst[cc * 3] = src[cc * 3] * (1.0 - strength) +
-        ((src[a * 3] + src[b * 3] + src[c * 3]) / 3.0) * strength;
-    dst[cc * 3 + 1] = src[cc * 3 + 1] * (1.0 - strength) +
-        ((src[a * 3 + 1] + src[b * 3 + 1] + src[c * 3 + 1]) / 3.0) * strength;
-    dst[cc * 3 + 2] = src[cc * 3 + 2] * (1.0 - strength) +
-        ((src[a * 3 + 2] + src[b * 3 + 2] + src[c * 3 + 2]) / 3.0) * strength;
+    dst[cc * 3] = src[cc * 3] * (1 - strength) +
+        ((src[a * 3] + src[b * 3] + src[c * 3]) / 3) * strength;
+    dst[cc * 3 + 1] = src[cc * 3 + 1] * (1 - strength) +
+        ((src[a * 3 + 1] + src[b * 3 + 1] + src[c * 3 + 1]) / 3) * strength;
+    dst[cc * 3 + 2] = src[cc * 3 + 2] * (1 - strength) +
+        ((src[a * 3 + 2] + src[b * 3 + 2] + src[c * 3 + 2]) / 3) * strength;
 }
 
 static void push(float strength, unsigned int width, unsigned int height,
