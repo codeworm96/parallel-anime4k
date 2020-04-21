@@ -10,8 +10,6 @@ int main() {
     unsigned int error;
     unsigned char* image = 0;
     unsigned int width, height;
-    int i;
-    int j;
 
     unsigned char* image2 = 0;
 

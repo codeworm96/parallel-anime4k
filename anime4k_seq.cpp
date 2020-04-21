@@ -55,7 +55,7 @@ static void extend(double *buf, unsigned int width, unsigned int height)
 {
     unsigned int new_width = width + 2;
 
-    for (int i = 1; i <= height; i++) {
+    for (unsigned int i = 1; i <= height; i++) {
         /* left */
         int left = i * new_width;
         buf[left] = buf[left + 1];
@@ -65,7 +65,7 @@ static void extend(double *buf, unsigned int width, unsigned int height)
         buf[right + 1] = buf[right];
     }
 
-    for (int i = 0; i < new_width; i++) {
+    for (unsigned int i = 0; i < new_width; i++) {
         /* top */
         buf[i] = buf[i + new_width];
 
@@ -80,7 +80,7 @@ static void extend_rgb(double *buf, unsigned int width, unsigned int height)
 {
     unsigned int new_width = width + 2;
 
-    for (int i = 1; i <= height; i++) {
+    for (unsigned int i = 1; i <= height; i++) {
         /* left */
         int left = 3 * (i * new_width + 1);
         buf[left - 3] = buf[left];
@@ -94,7 +94,7 @@ static void extend_rgb(double *buf, unsigned int width, unsigned int height)
         buf[right + 5] = buf[right + 2];
     }
 
-    for (int i = 0; i < new_width; i++) {
+    for (unsigned int i = 0; i < new_width; i++) {
         /* top */
         int top_from = 3 * (new_width + i);
         int top_to = 3 * i;
@@ -114,8 +114,8 @@ static void extend_rgb(double *buf, unsigned int width, unsigned int height)
 static void decode(unsigned int width, unsigned int height,
     unsigned char *src, double *dst)
 {
-    for (int i = 0; i < height; i++) {
-        for (int j = 0; j < width; j++) {
+    for (unsigned int i = 0; i < height; i++) {
+        for (unsigned int j = 0; j < width; j++) {
             int old_ix = 4 * (i * width + j);
             int new_ix = 3 * ((i + 1) * (width + 2) + j + 1);
             dst[new_ix] = src[old_ix] / 255.0;
@@ -140,8 +140,8 @@ static void linear_upscale(
     unsigned int old_width, unsigned int old_height, double *src,
     unsigned int width, unsigned int height, double *dst)
 {
-    for (int i = 0; i < height; i++) {
-        for (int j = 0; j < width; j++) {
+    for (unsigned int i = 0; i < height; i++) {
+        for (unsigned int j = 0; j < width; j++) {
             double x = (double)(i * old_height) / height;
             double y = (double)(j * old_width) / width;
             double floor_x = floor(x);
@@ -177,8 +177,8 @@ static void linear_upscale(
 static void compute_luminance(
     unsigned int width, unsigned int height, double *src, double *dst)
 {
-    for (int i = 0; i < height + 2; i++) {
-        for (int j = 0; j < width + 2; j++) {
+    for (unsigned int i = 0; i < height + 2; i++) {
+        for (unsigned int j = 0; j < width + 2; j++) {
             int lum_ix = i * (width + 2) + j;
             int ix = 3 * lum_ix;
 
@@ -211,8 +211,8 @@ static void preprocess(
 {
     unsigned int new_width = width + 2;
 
-    for (int i = 1; i <= height; i++) {
-        for (int j = 1; j <= width; j++) {
+    for (unsigned int i = 1; i <= height; i++) {
+        for (unsigned int j = 1; j <= width; j++) {
             /*
              * [tl  t tr]
              * [ l cc  r]
@@ -327,8 +327,8 @@ static void compute_gradient(unsigned int width, unsigned int height,
 {
     unsigned int new_width = width + 2;
 
-    for (int i = 1; i <= height; i++) {
-        for (int j = 1; j <= width; j++) {
+    for (unsigned int i = 1; i <= height; i++) {
+        for (unsigned int j = 1; j <= width; j++) {
             /*
              * [tl  t tr]
              * [ l cc  r]
@@ -344,7 +344,6 @@ static void compute_gradient(unsigned int width, unsigned int height,
             int bl_ix = b_ix - 1;
             int br_ix = b_ix + 1;
 
-            double cc = src[cc_ix];
             double r = src[r_ix];
             double l = src[l_ix];
             double t = src[t_ix];
@@ -392,8 +391,8 @@ static void push(double strength, unsigned int width, unsigned int height,
 {
     unsigned int new_width = width + 2;
 
-    for (int i = 1; i <= height; i++) {
-        for (int j = 1; j <= width; j++) {
+    for (unsigned int i = 1; i <= height; i++) {
+        for (unsigned int j = 1; j <= width; j++) {
             /*
              * [tl  t tr]
              * [ l cc  r]
@@ -510,8 +509,8 @@ static inline unsigned char quantize(double x)
 static void encode(unsigned int width, unsigned int height, double *src,
     unsigned char *dst)
 {
-    for (int i = 0; i < height; i++) {
-        for (int j = 0; j < width; j++) {
+    for (unsigned int i = 0; i < height; i++) {
+        for (unsigned int j = 0; j < width; j++) {
             int old_ix = 3 * ((i + 1) * (width + 2) + j + 1);
             int new_ix = 4 * (i * width + j);
 
