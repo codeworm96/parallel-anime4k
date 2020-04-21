@@ -1,40 +1,105 @@
 #include "lodepng.h"
+#include "cycleTimer.h"
 
 #include <stdio.h>
 #include <stdlib.h>
+#include <getopt.h>
 
 #include "anime4k.h"
 #include "anime4k_seq.h"
 
-int main() {
+static void usage(char *name) {
+    const char *use_string = "-i IFILE [-o OFILE] [-b IMP] [-n TIMES] [-W WIDTH] [-H HEIGHT] [-I]";
+    printf("Usage: %s %s\n", name, use_string);
+    printf("   -h        Print this message\n");
+    printf("   -i IFILE  Input image file\n");
+    printf("   -o OFILE  Output image file\n");
+    printf("   -b IMP    Backend implementation\n");
+    printf("   -n TIMES  Number of benchmark rounds\n");
+    printf("   -W WIDTH  Width of the output\n");
+    printf("   -H HEIGHT Height of the output\n");
+    printf("   -I        Instrument\n");
+    exit(0);
+}
+
+
+int main(int argc, char *argv[]) {
+    char *ifile = NULL;
+    char *ofile = NULL;
+    int times = 100;
+    unsigned int width = 3840;
+    unsigned int height = 2160;
     unsigned int error;
     unsigned char* image = 0;
-    unsigned int width, height;
+    unsigned int old_width, old_height;
 
-    unsigned char* image2 = 0;
+    const char *optstring = "hi:o:b:n:W:H:I";
+    int c;
+    while ((c = getopt(argc, argv, optstring)) != -1) {
+        switch(c) {
+        case 'h':
+            usage(argv[0]);
+            break;
+        case 'i':
+            ifile = optarg;
+            break;
+        case 'o':
+            ofile = optarg;
+            break;
+        case 'b':
+            break;
+        case 'n':
+            times = atoi(optarg);
+            break;
+        case 'W':
+            width = atoi(optarg);
+            break;
+        case 'H':
+            height = atoi(optarg);
+            break;
+        case 'I':
+            break;
+        default:
+            printf("Unknown option '%c'\n", c);
+            usage(argv[0]);
+            exit(1);
+        }
+    }
 
-    error = lodepng_decode32_file(&image, &width, &height, "test.png");
-    if(error) printf("error %u: %s\n", error, lodepng_error_text(error));
+    if (ifile == NULL) {
+        printf("Need input file\n");
+        usage(argv[0]);
+        exit(1);
+    }
 
-    /*use image here*/
-    printf("width %u, height %u\n", width, height);
+    error = lodepng_decode32_file(&image, &old_width, &old_height, ifile);
+    if (error) {
+        printf("error %u: %s\n", error, lodepng_error_text(error));
+        exit(1);
+    }
 
-    unsigned int uwidth = width * 6;
-    unsigned int uheight = height * 6;
+    Anime4k* upscaler = new Anime4kSeq(old_width, old_height, image, width, height);
 
-    Anime4k* upscaler = new Anime4kSeq(width, height, image, uwidth, uheight);
+    double startTime = CycleTimer::currentSeconds();
 
-    upscaler->run();
+    for (int i = 0; i < times; i++) {
+        upscaler->run();
+    }
 
-    image2 = upscaler->get_image();
+    double endTime = CycleTimer::currentSeconds();
+    double totalTime = endTime - startTime;
 
-    error = lodepng_encode32_file("out.png", image2, uwidth, uheight);
+    printf("Upscaled %d frames in %.4f s (%.4f fps)\n", times, totalTime, times / totalTime);
 
-    /*if there's an error, display it*/
-    if(error) printf("error %u: %s\n", error, lodepng_error_text(error));
+    if (ofile) {
+        error = lodepng_encode32_file(ofile, upscaler->get_image(), width, height);
+        if (error) {
+            printf("error %u: %s\n", error, lodepng_error_text(error));
+        }   
+    }
 
-    free(image);
     delete upscaler;
+    free(image);
 
     return 0;
 }
