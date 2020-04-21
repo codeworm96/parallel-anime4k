@@ -3,21 +3,21 @@
 #include <stdlib.h>
 #include <math.h>
 
-static inline double min(double a, double b)
+static inline float min(float a, float b)
 {
     return a < b ? a : b;
 }
 
-static inline double min3v(double a, double b, double c) {
+static inline float min3v(float a, float b, float c) {
     return min(min(a, b), c);
 }
 
-static inline double max(double a, double b)
+static inline float max(float a, float b)
 {
     return a > b ? a : b;
 }
 
-static inline double max3v(double a, double b, double c) {
+static inline float max3v(float a, float b, float c) {
     return max(max(a, b), c);
 }
 
@@ -35,23 +35,23 @@ Anime4kSeq::Anime4kSeq(
     unsigned int old_pixels = (width + 2) * (height + 2);
     unsigned int pixels = (new_width + 2) * (new_height + 2);
 
-    original_ = new double[3 * old_pixels];
-    enlarge_ = new double[3 * pixels];
-    lum_ = new double[pixels];
-    preprocessing_ = new double[3 * pixels];
-    gradients_ = new double[pixels];
-    final_ = new double[3 * pixels];
+    original_ = new float[3 * old_pixels];
+    enlarge_ = new float[3 * pixels];
+    lum_ = new float[pixels];
+    preprocessing_ = new float[3 * pixels];
+    gradients_ = new float[pixels];
+    final_ = new float[3 * pixels];
 
     // result does not need ghost pixels
     result_ = new unsigned char[4 * new_width * new_height];
 
     strength_preprocessing_ =
-        min((double)new_width / width / 6.0, 1.0);
+        min((float)new_width / width / 6.0, 1.0);
     strength_push_ =
-        min((double)new_width / width / 2.0, 1.0);
+        min((float)new_width / width / 2.0, 1.0);
 }
 
-static void extend(double *buf, unsigned int width, unsigned int height)
+static void extend(float *buf, unsigned int width, unsigned int height)
 {
     unsigned int new_width = width + 2;
 
@@ -76,7 +76,7 @@ static void extend(double *buf, unsigned int width, unsigned int height)
     }
 }
 
-static void extend_rgb(double *buf, unsigned int width, unsigned int height)
+static void extend_rgb(float *buf, unsigned int width, unsigned int height)
 {
     unsigned int new_width = width + 2;
 
@@ -112,7 +112,7 @@ static void extend_rgb(double *buf, unsigned int width, unsigned int height)
 }
 
 static void decode(unsigned int width, unsigned int height,
-    unsigned char *src, double *dst)
+    unsigned char *src, float *dst)
 {
     for (unsigned int i = 0; i < height; i++) {
         for (unsigned int j = 0; j < width; j++) {
@@ -127,29 +127,29 @@ static void decode(unsigned int width, unsigned int height,
     extend_rgb(dst, width, height);
 }
 
-static inline double interpolate(
-    double tl, double tr,
-    double bl, double br, double f, double g)
+static inline float interpolate(
+    float tl, float tr,
+    float bl, float br, float f, float g)
 {
-    double l = tl * (1.0 - f) + bl * f;
-    double r = tr * (1.0 - f) + br * f;
+    float l = tl * (1.0 - f) + bl * f;
+    float r = tr * (1.0 - f) + br * f;
     return l * (1.0 - g) + r * g;
 }
 
 static void linear_upscale(
-    unsigned int old_width, unsigned int old_height, double *src,
-    unsigned int width, unsigned int height, double *dst)
+    unsigned int old_width, unsigned int old_height, float *src,
+    unsigned int width, unsigned int height, float *dst)
 {
     for (unsigned int i = 0; i < height; i++) {
         for (unsigned int j = 0; j < width; j++) {
-            double x = (double)(i * old_height) / height;
-            double y = (double)(j * old_width) / width;
-            double floor_x = floor(x);
-            double floor_y = floor(y);
+            float x = (float)(i * old_height) / height;
+            float y = (float)(j * old_width) / width;
+            float floor_x = floor(x);
+            float floor_y = floor(y);
             int h = (int)floor_x + 1;
             int w = (int)floor_y + 1;
-            double f = x - floor_x;
-            double g = y - floor_y;
+            float f = x - floor_x;
+            float g = y - floor_y;
 
             int ix = 3 * ((i + 1) * (width + 2) + j + 1);
             int tl = 3 * (h * (old_width + 2) + w);
@@ -175,7 +175,7 @@ static void linear_upscale(
 }
 
 static void compute_luminance(
-    unsigned int width, unsigned int height, double *src, double *dst)
+    unsigned int width, unsigned int height, float *src, float *dst)
 {
     for (unsigned int i = 0; i < height + 2; i++) {
         for (unsigned int j = 0; j < width + 2; j++) {
@@ -188,10 +188,10 @@ static void compute_luminance(
     }
 }
 
-static inline void get_largest(double strength, double *image, double *lum,
-    double color[4], int cc, int a, int b, int c)
+static inline void get_largest(float strength, float *image, float *lum,
+    float color[4], int cc, int a, int b, int c)
 {
-    double new_lum = lum[cc] * (1.0 - strength) +
+    float new_lum = lum[cc] * (1.0 - strength) +
         ((lum[a] + lum[b] + lum[c]) / 3.0) * strength;
     
     if (new_lum > color[3]) {
@@ -206,8 +206,8 @@ static inline void get_largest(double strength, double *image, double *lum,
 }
 
 static void preprocess(
-    double strength, unsigned int width, unsigned int height,
-    double *image, double *lum, double *dst)
+    float strength, unsigned int width, unsigned int height,
+    float *image, float *lum, float *dst)
 {
     unsigned int new_width = width + 2;
 
@@ -228,25 +228,25 @@ static void preprocess(
             int bl_ix = b_ix - 1;
             int br_ix = b_ix + 1;
 
-            double cc = lum[cc_ix];
-            double r = lum[r_ix];
-            double l = lum[l_ix];
-            double t = lum[t_ix];
-            double tl = lum[tl_ix];
-            double tr = lum[tr_ix];
-            double b = lum[b_ix];
-            double bl = lum[bl_ix];
-            double br = lum[br_ix];
+            float cc = lum[cc_ix];
+            float r = lum[r_ix];
+            float l = lum[l_ix];
+            float t = lum[t_ix];
+            float tl = lum[tl_ix];
+            float tr = lum[tr_ix];
+            float b = lum[b_ix];
+            float bl = lum[bl_ix];
+            float br = lum[br_ix];
 
-            double color[4];
+            float color[4];
             color[0] = image[3 * cc_ix];
             color[1] = image[3 * cc_ix + 1];
             color[2] = image[3 * cc_ix + 2];
             color[3] = cc;
 
             /* pattern 0 and 4 */
-            double maxDark = max3v(br, b, bl);
-            double minLight = min3v(tl, t, tr);
+            float maxDark = max3v(br, b, bl);
+            float minLight = min3v(tl, t, tr);
 
             if (minLight > cc && minLight > maxDark) {
                 get_largest(strength, image, lum, color,
@@ -317,13 +317,13 @@ static void preprocess(
     extend_rgb(dst, width, height);
 }
 
-static inline double clamp(double x, double lower, double upper)
+static inline float clamp(float x, float lower, float upper)
 {
     return x < lower ? lower : (x > upper ? upper : x);
 }
 
 static void compute_gradient(unsigned int width, unsigned int height,
-    double *src, double *dst)
+    float *src, float *dst)
 {
     unsigned int new_width = width + 2;
 
@@ -344,28 +344,28 @@ static void compute_gradient(unsigned int width, unsigned int height,
             int bl_ix = b_ix - 1;
             int br_ix = b_ix + 1;
 
-            double r = src[r_ix];
-            double l = src[l_ix];
-            double t = src[t_ix];
-            double tl = src[tl_ix];
-            double tr = src[tr_ix];
-            double b = src[b_ix];
-            double bl = src[bl_ix];
-            double br = src[br_ix];
+            float r = src[r_ix];
+            float l = src[l_ix];
+            float t = src[t_ix];
+            float tl = src[tl_ix];
+            float tr = src[tr_ix];
+            float b = src[b_ix];
+            float bl = src[bl_ix];
+            float br = src[br_ix];
 
             /* Horizontal Gradient
              * [-1  0  1]
              * [-2  0  2]
              * [-1  0  1]
              */
-            double xgrad = tr - tl + r + r - l - l + br - bl;
+            float xgrad = tr - tl + r + r - l - l + br - bl;
 
             /* Vertical Gradient
              * [-1 -2 -1]
              * [ 0  0  0]
              * [ 1  2  1]
              */
-            double ygrad = bl - tl + b + b - t - t + br - tr;
+            float ygrad = bl - tl + b + b - t - t + br - tr;
 
             dst[cc_ix] =
                 1.0 - clamp(sqrt(xgrad * xgrad + ygrad * ygrad), 0.0, 1.0);
@@ -375,7 +375,7 @@ static void compute_gradient(unsigned int width, unsigned int height,
     extend(dst, width, height);
 }
 
-static inline void get_average(double strength, double *src, double *dst,
+static inline void get_average(float strength, float *src, float *dst,
     int cc, int a, int b, int c)
 {
     dst[cc * 3] = src[cc * 3] * (1.0 - strength) +
@@ -386,8 +386,8 @@ static inline void get_average(double strength, double *src, double *dst,
         ((src[a * 3 + 2] + src[b * 3 + 2] + src[c * 3 + 2]) / 3.0) * strength;
 }
 
-static void push(double strength, unsigned int width, unsigned int height,
-    double *image, double *gradients, double *dst)
+static void push(float strength, unsigned int width, unsigned int height,
+    float *image, float *gradients, float *dst)
 {
     unsigned int new_width = width + 2;
 
@@ -408,19 +408,19 @@ static void push(double strength, unsigned int width, unsigned int height,
             int bl_ix = b_ix - 1;
             int br_ix = b_ix + 1;
 
-            double cc = gradients[cc_ix];
-            double r = gradients[r_ix];
-            double l = gradients[l_ix];
-            double t = gradients[t_ix];
-            double tl = gradients[tl_ix];
-            double tr = gradients[tr_ix];
-            double b = gradients[b_ix];
-            double bl = gradients[bl_ix];
-            double br = gradients[br_ix];
+            float cc = gradients[cc_ix];
+            float r = gradients[r_ix];
+            float l = gradients[l_ix];
+            float t = gradients[t_ix];
+            float tl = gradients[tl_ix];
+            float tr = gradients[tr_ix];
+            float b = gradients[b_ix];
+            float bl = gradients[bl_ix];
+            float br = gradients[br_ix];
 
             /* pattern 0 and 4 */
-            double maxDark = max3v(br, b, bl);
-            double minLight = min3v(tl, t, tr);
+            float maxDark = max3v(br, b, bl);
+            float minLight = min3v(tl, t, tr);
 
             if (minLight > cc && minLight > maxDark) {
                 get_average(strength, image, dst,
@@ -500,13 +500,13 @@ static void push(double strength, unsigned int width, unsigned int height,
     /* this is the final step, no need to extend the border */
 }
 
-static inline unsigned char quantize(double x)
+static inline unsigned char quantize(float x)
 {
     int r = x * 255;
     return r < 0 ? 0 : (r > 255 ? 255 : r);
 }
 
-static void encode(unsigned int width, unsigned int height, double *src,
+static void encode(unsigned int width, unsigned int height, float *src,
     unsigned char *dst)
 {
     for (unsigned int i = 0; i < height; i++) {
