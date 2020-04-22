@@ -1,6 +1,5 @@
 EXECUTABLE := upscale
 LDFLAGS=-L/usr/local/depot/cuda-10.2/lib64/ -lcudart
-CC_FILES   := upscale.cpp lodepng.cpp anime4k_seq.cpp 
 
 all: $(EXECUTABLE)
 
