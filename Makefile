@@ -22,7 +22,7 @@ LDFRAMEWORKS := $(addprefix -framework , $(FRAMEWORKS))
 
 NVCC=nvcc
 
-OBJS=$(OBJDIR)/upscale.o $(OBJDIR)/lodepng.o $(OBJDIR)/anime4k_seq.o $(OBJDIR)/anime4k_cuda.o
+OBJS=$(OBJDIR)/upscale.o $(OBJDIR)/lodepng.o $(OBJDIR)/anime4k_seq.o $(OBJDIR)/instrument.o $(OBJDIR)/anime4k_cuda.o
 
 
 .PHONY: dirs clean

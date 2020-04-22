@@ -1,5 +1,6 @@
 #include "lodepng.h"
 #include "cycleTimer.h"
+#include "instrument.h"
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -34,6 +35,7 @@ int main(int argc, char *argv[]) {
     unsigned int error;
     unsigned char* image = 0;
     unsigned int old_width, old_height;
+    bool instrument = false;
 
     const char *optstring = "hi:o:b:n:W:H:I";
     int c;
@@ -61,6 +63,7 @@ int main(int argc, char *argv[]) {
             height = atoi(optarg);
             break;
         case 'I':
+            instrument = true;
             break;
         default:
             printf("Unknown option '%c'\n", c);
@@ -91,6 +94,7 @@ int main(int argc, char *argv[]) {
         exit(1);
     }
 
+    track_activity(instrument);
     double startTime = CycleTimer::currentSeconds();
 
     for (int i = 0; i < times; i++) {
@@ -100,7 +104,9 @@ int main(int argc, char *argv[]) {
     double endTime = CycleTimer::currentSeconds();
     double totalTime = endTime - startTime;
 
-    printf("Upscaled %d frames in %.4f s (%.4f fps)\n", times, totalTime, times / totalTime);
+    SHOW_ACTIVITY(stderr, instrument);
+    fprintf(stderr, "Upscaled %d frames in %.4f s (%.4f fps)\n",
+        times, totalTime, times / totalTime);
 
     if (ofile) {
         error = lodepng_encode32_file(ofile, upscaler->get_image(), width, height);

@@ -1,3 +1,5 @@
+/* Adapted from file cycleTimer.h in 15-418 code repository */
+
 #ifndef _SYRAH_CYCLE_TIMER_H_
 #define _SYRAH_CYCLE_TIMER_H_
 

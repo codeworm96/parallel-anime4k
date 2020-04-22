@@ -10,15 +10,15 @@ private:
     unsigned char *image_;
     unsigned int width_;
     unsigned int height_;
-    double *original_;
-    double *enlarge_;
-    double *lum_;
-    double *preprocessing_;
-    double *gradients_;
-    double *final_;
+    float *original_;
+    float *enlarge_;
+    float *lum_;
+    float *thinlines_;
+    float *gradients_;
+    float *refined_;
     unsigned char *result_;
-    double strength_preprocessing_;
-    double strength_push_;
+    float strength_thinlines_;
+    float strength_refine_;
 public:
     Anime4kSeq(
         unsigned int width, unsigned int height, unsigned char *image,
