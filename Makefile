@@ -1,6 +1,6 @@
 EXECUTABLE := upscale
-#LDFLAGS=-L/usr/local/depot/cuda-10.2/lib64/ -lcudart
-CC_FILES   := upscale.cpp lodepng.cpp anime4k_seq.cpp
+LDFLAGS=-L/usr/local/depot/cuda-10.2/lib64/ -lcudart
+CC_FILES   := upscale.cpp lodepng.cpp anime4k_seq.cpp 
 
 all: $(EXECUTABLE)
 
@@ -16,14 +16,13 @@ LIBS       :=
 FRAMEWORKS :=
 
 NVCCFLAGS=-O3 -m64 --gpu-architecture compute_61 -ccbin /usr/bin/gcc
-#LIBS += cudart
 
 LDLIBS  := $(addprefix -l, $(LIBS))
 LDFRAMEWORKS := $(addprefix -framework , $(FRAMEWORKS))
 
 NVCC=nvcc
 
-OBJS=$(OBJDIR)/upscale.o $(OBJDIR)/lodepng.o $(OBJDIR)/anime4k_seq.o
+OBJS=$(OBJDIR)/upscale.o $(OBJDIR)/lodepng.o $(OBJDIR)/anime4k_seq.o $(OBJDIR)/anime4k_cuda.o
 
 
 .PHONY: dirs clean

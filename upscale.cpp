@@ -7,6 +7,7 @@
 
 #include "anime4k.h"
 #include "anime4k_seq.h"
+#include "anime4k_cuda.h"
 
 static void usage(char *name) {
     const char *use_string = "-i IFILE [-o OFILE] [-b IMP] [-n TIMES] [-W WIDTH] [-H HEIGHT] [-I]";
@@ -26,6 +27,7 @@ static void usage(char *name) {
 int main(int argc, char *argv[]) {
     char *ifile = NULL;
     char *ofile = NULL;
+    const char *backend = "cuda";
     int times = 100;
     unsigned int width = 3840;
     unsigned int height = 2160;
@@ -47,6 +49,7 @@ int main(int argc, char *argv[]) {
             ofile = optarg;
             break;
         case 'b':
+            backend = optarg;
             break;
         case 'n':
             times = atoi(optarg);
@@ -78,7 +81,15 @@ int main(int argc, char *argv[]) {
         exit(1);
     }
 
-    Anime4k* upscaler = new Anime4kSeq(old_width, old_height, image, width, height);
+    Anime4k* upscaler;
+    if (strcasecmp(backend, "seq")==0) {
+        upscaler = new Anime4kSeq(old_width, old_height, image, width, height);
+    } else if (strcasecmp(backend, "cuda")==0) {
+        upscaler = new Anime4kCuda(old_width, old_height, image, width, height);
+    } else {
+        printf("%s backend is not implemented\n", backend);
+        exit(1);
+    }
 
     double startTime = CycleTimer::currentSeconds();
 
