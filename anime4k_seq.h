@@ -13,12 +13,12 @@ private:
     float *original_;
     float *enlarge_;
     float *lum_;
-    float *preprocessing_;
+    float *thinlines_;
     float *gradients_;
-    float *final_;
+    float *refined_;
     unsigned char *result_;
-    float strength_preprocessing_;
-    float strength_push_;
+    float strength_thinlines_;
+    float strength_refine_;
 public:
     Anime4kSeq(
         unsigned int width, unsigned int height, unsigned char *image,

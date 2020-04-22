@@ -40,16 +40,16 @@ Anime4kSeq::Anime4kSeq(
     original_ = new float[3 * old_pixels];
     enlarge_ = new float[3 * pixels];
     lum_ = new float[pixels];
-    preprocessing_ = new float[3 * pixels];
+    thinlines_ = new float[3 * pixels];
     gradients_ = new float[pixels];
-    final_ = new float[3 * pixels];
+    refined_ = new float[3 * pixels];
 
     // result does not need ghost pixels
     result_ = new unsigned char[4 * new_width * new_height];
 
-    strength_preprocessing_ =
+    strength_thinlines_ =
         min((float)new_width / width / 6, 1.0f);
-    strength_push_ =
+    strength_refine_ =
         min((float)new_width / width / 2, 1.0f);
 }
 
@@ -219,11 +219,11 @@ static inline void get_largest(float strength, float *image, float *lum,
     }
 }
 
-static void preprocess(
+static void thin_lines(
     float strength, unsigned int width, unsigned int height,
     float *image, float *lum, float *dst)
 {
-    START_ACTIVITY(ACTIVITY_PREPROCESS);
+    START_ACTIVITY(ACTIVITY_THINLINES);
 
     unsigned int new_width = width + 2;
 
@@ -332,7 +332,7 @@ static void preprocess(
 
     extend_rgb(dst, width, height);
 
-    FINISH_ACTIVITY(ACTIVITY_PREPROCESS);
+    FINISH_ACTIVITY(ACTIVITY_THINLINES);
 }
 
 static inline float clamp(float x, float lower, float upper)
@@ -408,10 +408,10 @@ static inline void get_average(float strength, float *src, float *dst,
         ((src[a * 3 + 2] + src[b * 3 + 2] + src[c * 3 + 2]) / 3) * strength;
 }
 
-static void push(float strength, unsigned int width, unsigned int height,
+static void refine(float strength, unsigned int width, unsigned int height,
     float *image, float *gradients, float *dst)
 {
-    START_ACTIVITY(ACTIVITY_PUSH);
+    START_ACTIVITY(ACTIVITY_REFINE);
 
     unsigned int new_width = width + 2;
 
@@ -523,7 +523,7 @@ static void push(float strength, unsigned int width, unsigned int height,
 
     /* this is the final step, no need to extend the border */
 
-    FINISH_ACTIVITY(ACTIVITY_PUSH);
+    FINISH_ACTIVITY(ACTIVITY_REFINE);
 }
 
 static inline unsigned char quantize(float x)
@@ -558,12 +558,12 @@ void Anime4kSeq::run()
     linear_upscale(old_width_, old_height_, original_,
         width_, height_, enlarge_);
     compute_luminance(width_, height_, enlarge_, lum_);
-    preprocess(strength_preprocessing_, width_, height_,
-        enlarge_, lum_, preprocessing_);
-    compute_luminance(width_, height_, preprocessing_, lum_);
+    thin_lines(strength_thinlines_, width_, height_,
+        enlarge_, lum_, thinlines_);
+    compute_luminance(width_, height_, thinlines_, lum_);
     compute_gradient(width_, height_, lum_, gradients_);
-    push(strength_push_, width_, height_, preprocessing_, gradients_, final_);
-    encode(width_, height_, final_, result_);
+    refine(strength_refine_, width_, height_, thinlines_, gradients_, refined_);
+    encode(width_, height_, refined_, result_);
 }
 
 Anime4kSeq::~Anime4kSeq()
@@ -571,8 +571,8 @@ Anime4kSeq::~Anime4kSeq()
     delete [] original_;
     delete [] enlarge_;
     delete [] lum_;
-    delete [] preprocessing_;
+    delete [] thinlines_;
     delete [] gradients_;
-    delete [] final_;
+    delete [] refined_;
     delete [] result_;
 }
