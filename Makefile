@@ -1,6 +1,6 @@
 EXECUTABLE := upscale
 #LDFLAGS=-L/usr/local/depot/cuda-10.2/lib64/ -lcudart
-CC_FILES   := upscale.cpp lodepng.cpp anime4k_seq.cpp
+CC_FILES   := upscale.cpp lodepng.cpp anime4k_seq.cpp instrument.cpp
 
 all: $(EXECUTABLE)
 
@@ -23,7 +23,7 @@ LDFRAMEWORKS := $(addprefix -framework , $(FRAMEWORKS))
 
 NVCC=nvcc
 
-OBJS=$(OBJDIR)/upscale.o $(OBJDIR)/lodepng.o $(OBJDIR)/anime4k_seq.o
+OBJS=$(OBJDIR)/upscale.o $(OBJDIR)/lodepng.o $(OBJDIR)/anime4k_seq.o $(OBJDIR)/instrument.o
 
 
 .PHONY: dirs clean

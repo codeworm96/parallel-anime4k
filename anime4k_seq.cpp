@@ -1,5 +1,7 @@
 #include "anime4k_seq.h"
 
+#include "instrument.h"
+
 #include <stdlib.h>
 #include <math.h>
 
@@ -114,6 +116,8 @@ static void extend_rgb(float *buf, unsigned int width, unsigned int height)
 static void decode(unsigned int width, unsigned int height,
     unsigned char *src, float *dst)
 {
+    START_ACTIVITY(ACTIVITY_DECODE);
+
     for (unsigned int i = 0; i < height; i++) {
         for (unsigned int j = 0; j < width; j++) {
             int old_ix = 4 * (i * width + j);
@@ -125,6 +129,8 @@ static void decode(unsigned int width, unsigned int height,
     }
 
     extend_rgb(dst, width, height);
+
+    FINISH_ACTIVITY(ACTIVITY_DECODE);
 }
 
 static inline float interpolate(
@@ -140,6 +146,8 @@ static void linear_upscale(
     unsigned int old_width, unsigned int old_height, float *src,
     unsigned int width, unsigned int height, float *dst)
 {
+    START_ACTIVITY(ACTIVITY_LINEAR);
+
     for (unsigned int i = 0; i < height; i++) {
         for (unsigned int j = 0; j < width; j++) {
             float x = (float)(i * old_height) / height;
@@ -172,11 +180,15 @@ static void linear_upscale(
     }
 
     extend_rgb(dst, width, height);
+
+    FINISH_ACTIVITY(ACTIVITY_LINEAR);
 }
 
 static void compute_luminance(
     unsigned int width, unsigned int height, float *src, float *dst)
 {
+    START_ACTIVITY(ACTIVITY_LUM);
+
     for (unsigned int i = 0; i < height + 2; i++) {
         for (unsigned int j = 0; j < width + 2; j++) {
             int lum_ix = i * (width + 2) + j;
@@ -186,6 +198,8 @@ static void compute_luminance(
                 (src[ix] * 2 + src[ix + 1] * 3 + src[ix + 2]) / 6;
         }
     }
+
+    FINISH_ACTIVITY(ACTIVITY_LUM);
 }
 
 static inline void get_largest(float strength, float *image, float *lum,
@@ -209,6 +223,8 @@ static void preprocess(
     float strength, unsigned int width, unsigned int height,
     float *image, float *lum, float *dst)
 {
+    START_ACTIVITY(ACTIVITY_PREPROCESS);
+
     unsigned int new_width = width + 2;
 
     for (unsigned int i = 1; i <= height; i++) {
@@ -315,6 +331,8 @@ static void preprocess(
     }
 
     extend_rgb(dst, width, height);
+
+    FINISH_ACTIVITY(ACTIVITY_PREPROCESS);
 }
 
 static inline float clamp(float x, float lower, float upper)
@@ -325,6 +343,8 @@ static inline float clamp(float x, float lower, float upper)
 static void compute_gradient(unsigned int width, unsigned int height,
     float *src, float *dst)
 {
+    START_ACTIVITY(ACTIVITY_GRADIENT);
+
     unsigned int new_width = width + 2;
 
     for (unsigned int i = 1; i <= height; i++) {
@@ -373,6 +393,8 @@ static void compute_gradient(unsigned int width, unsigned int height,
     }
 
     extend(dst, width, height);
+
+    FINISH_ACTIVITY(ACTIVITY_GRADIENT);
 }
 
 static inline void get_average(float strength, float *src, float *dst,
@@ -389,6 +411,8 @@ static inline void get_average(float strength, float *src, float *dst,
 static void push(float strength, unsigned int width, unsigned int height,
     float *image, float *gradients, float *dst)
 {
+    START_ACTIVITY(ACTIVITY_PUSH);
+
     unsigned int new_width = width + 2;
 
     for (unsigned int i = 1; i <= height; i++) {
@@ -498,6 +522,8 @@ static void push(float strength, unsigned int width, unsigned int height,
     }
 
     /* this is the final step, no need to extend the border */
+
+    FINISH_ACTIVITY(ACTIVITY_PUSH);
 }
 
 static inline unsigned char quantize(float x)
@@ -509,6 +535,8 @@ static inline unsigned char quantize(float x)
 static void encode(unsigned int width, unsigned int height, float *src,
     unsigned char *dst)
 {
+    START_ACTIVITY(ACTIVITY_ENCODE);
+
     for (unsigned int i = 0; i < height; i++) {
         for (unsigned int j = 0; j < width; j++) {
             int old_ix = 3 * ((i + 1) * (width + 2) + j + 1);
@@ -520,6 +548,8 @@ static void encode(unsigned int width, unsigned int height, float *src,
             dst[new_ix + 3] = 255;
         }
     }
+
+    FINISH_ACTIVITY(ACTIVITY_ENCODE);
 }
 
 void Anime4kSeq::run()
