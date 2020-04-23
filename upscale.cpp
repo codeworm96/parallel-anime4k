@@ -9,6 +9,7 @@
 #include "anime4k.h"
 #include "anime4k_seq.h"
 #include "anime4k_cuda.h"
+#include "anime4k_ispc.h"
 
 static void usage(char *name) {
     const char *use_string = "-i IFILE [-o OFILE] [-b IMP] [-n TIMES] [-W WIDTH] [-H HEIGHT] [-I]";
@@ -89,6 +90,8 @@ int main(int argc, char *argv[]) {
         upscaler = new Anime4kSeq(old_width, old_height, image, width, height);
     } else if (strcasecmp(backend, "cuda")==0) {
         upscaler = new Anime4kCuda(old_width, old_height, image, width, height);
+    } else if (strcasecmp(backend, "ispc")==0) {
+        upscaler = new Anime4kIspc(old_width, old_height, image, width, height);
     } else {
         printf("%s backend is not implemented\n", backend);
         exit(1);

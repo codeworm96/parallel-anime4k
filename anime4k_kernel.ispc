@@ -1,125 +1,17 @@
-#include "anime4k_seq.h"
-
-#include "instrument.h"
-
-#include <stdlib.h>
-#include <math.h>
-
-static inline float min(float a, float b)
-{
-    return a < b ? a : b;
-}
-
-static inline float min3v(float a, float b, float c) {
+inline float min3v(float a, float b, float c) {
     return min(min(a, b), c);
 }
 
-static inline float max(float a, float b)
-{
-    return a > b ? a : b;
-}
-
-static inline float max3v(float a, float b, float c) {
+inline float max3v(float a, float b, float c) {
     return max(max(a, b), c);
 }
 
-Anime4kSeq::Anime4kSeq(
-    unsigned int width, unsigned int height, unsigned char *image,
-    unsigned int new_width, unsigned int new_height)
+export void decode(
+    uniform unsigned int width, uniform unsigned int height,
+    uniform unsigned int8 src[], uniform float dst[])
 {
-    old_width_ = width;
-    old_height_ = height;
-    image_ = image;
-    width_ = new_width;
-    height_ = new_height;
-
-    /* ghost pixels added to avoid out-of-bounds */
-    unsigned int old_pixels = (width + 2) * (height + 2);
-    unsigned int pixels = (new_width + 2) * (new_height + 2);
-
-    original_ = new float[3 * old_pixels];
-    enlarge_ = new float[3 * pixels];
-    lum_ = new float[pixels];
-    thinlines_ = new float[3 * pixels];
-    gradients_ = new float[pixels];
-    refined_ = new float[3 * pixels];
-
-    // result does not need ghost pixels
-    result_ = new unsigned char[4 * new_width * new_height];
-
-    strength_thinlines_ =
-        min((float)new_width / width / 6, 1.0f);
-    strength_refine_ =
-        min((float)new_width / width / 2, 1.0f);
-}
-
-static inline void extend(float *buf, unsigned int width, unsigned int height)
-{
-    unsigned int new_width = width + 2;
-
-    for (unsigned int i = 1; i <= height; i++) {
-        /* left */
-        int left = i * new_width;
-        buf[left] = buf[left + 1];
-
-        /* right */
-        int right = i * new_width + width;
-        buf[right + 1] = buf[right];
-    }
-
-    for (unsigned int i = 0; i < new_width; i++) {
-        /* top */
-        buf[i] = buf[i + new_width];
-
-        /* bottom */
-        int bottom_from = height * new_width + i;
-        int bottom_to = bottom_from + new_width;
-        buf[bottom_to] = buf[bottom_from];
-    }
-}
-
-static inline void extend_rgb(float *buf, unsigned int width, unsigned int height)
-{
-    unsigned int new_width = width + 2;
-
-    for (unsigned int i = 1; i <= height; i++) {
-        /* left */
-        int left = 3 * (i * new_width + 1);
-        buf[left - 3] = buf[left];
-        buf[left - 2] = buf[left + 1];
-        buf[left - 1] = buf[left + 2];
-
-        /* right */
-        int right = 3 * (i * new_width + width);
-        buf[right + 3] = buf[right];
-        buf[right + 4] = buf[right + 1];
-        buf[right + 5] = buf[right + 2];
-    }
-
-    for (unsigned int i = 0; i < new_width; i++) {
-        /* top */
-        int top_from = 3 * (new_width + i);
-        int top_to = 3 * i;
-        buf[top_to] = buf[top_from];
-        buf[top_to + 1] = buf[top_from + 1];
-        buf[top_to + 2] = buf[top_from + 2];
-
-        /* bottom */
-        int bottom_from = 3 * (height * new_width + i);
-        int bottom_to = 3 * ((height + 1) * new_width + i);
-        buf[bottom_to] = buf[bottom_from];
-        buf[bottom_to + 1] = buf[bottom_from + 1];
-        buf[bottom_to + 2] = buf[bottom_from + 2];
-    }
-}
-
-static void decode(unsigned int width, unsigned int height,
-    unsigned char *src, float *dst)
-{
-    START_ACTIVITY(ACTIVITY_DECODE);
-
-    for (unsigned int i = 0; i < height; i++) {
-        for (unsigned int j = 0; j < width; j++) {
+    for (uniform unsigned int i = 0; i < height; i++) {
+        foreach (j = 0 ... width) {
             int old_ix = 4 * (i * width + j);
             int new_ix = 3 * ((i + 1) * (width + 2) + j + 1);
             dst[new_ix] = src[old_ix] / 255.0f;
@@ -127,13 +19,9 @@ static void decode(unsigned int width, unsigned int height,
             dst[new_ix + 2] = src[old_ix + 2] / 255.0f;
         }
     }
-
-    extend_rgb(dst, width, height);
-
-    FINISH_ACTIVITY(ACTIVITY_DECODE);
 }
 
-static inline float interpolate(
+inline float interpolate(
     float tl, float tr,
     float bl, float br, float f, float g)
 {
@@ -142,14 +30,12 @@ static inline float interpolate(
     return l * (1 - g) + r * g;
 }
 
-static void linear_upscale(
-    unsigned int old_width, unsigned int old_height, float *src,
-    unsigned int width, unsigned int height, float *dst)
+export void linear_upscale(
+    uniform unsigned int old_width, uniform unsigned int old_height, uniform float src[],
+    uniform unsigned int width, uniform unsigned int height, uniform float dst[])
 {
-    START_ACTIVITY(ACTIVITY_LINEAR);
-
-    for (unsigned int i = 0; i < height; i++) {
-        for (unsigned int j = 0; j < width; j++) {
+    for (uniform unsigned int i = 0; i < height; i++) {
+        foreach(j = 0 ... width) {
             float x = (float)(i * old_height) / height;
             float y = (float)(j * old_width) / width;
             float floor_x = floor(x);
@@ -178,19 +64,14 @@ static void linear_upscale(
                 src[bl + 2], src[br + 2], f, g);
         }
     }
-
-    extend_rgb(dst, width, height);
-
-    FINISH_ACTIVITY(ACTIVITY_LINEAR);
 }
 
-static void compute_luminance(
-    unsigned int width, unsigned int height, float *src, float *dst)
+export void compute_luminance(
+    uniform unsigned int width, uniform unsigned int height,
+    uniform float src[], uniform float dst[])
 {
-    START_ACTIVITY(ACTIVITY_LUM);
-
-    for (unsigned int i = 0; i < height + 2; i++) {
-        for (unsigned int j = 0; j < width + 2; j++) {
+    for (uniform unsigned int i = 0; i < height + 2; i++) {
+        foreach (j = 0 ... width + 2) {
             int lum_ix = i * (width + 2) + j;
             int ix = 3 * lum_ix;
 
@@ -198,11 +79,9 @@ static void compute_luminance(
                 (src[ix] * 2 + src[ix + 1] * 3 + src[ix + 2]) / 6;
         }
     }
-
-    FINISH_ACTIVITY(ACTIVITY_LUM);
 }
 
-static inline void get_largest(float strength, float *image, float *lum,
+inline void get_largest(float strength, float *image, float *lum,
     float color[4], int cc, int a, int b, int c)
 {
     float new_lum = lum[cc] * (1 - strength) +
@@ -219,16 +98,14 @@ static inline void get_largest(float strength, float *image, float *lum,
     }
 }
 
-static void thin_lines(
-    float strength, unsigned int width, unsigned int height,
-    float *image, float *lum, float *dst)
+export void thin_lines(
+    uniform float strength, uniform unsigned int width, uniform unsigned int height,
+    uniform float image[], uniform float lum[], uniform float dst[])
 {
-    START_ACTIVITY(ACTIVITY_THINLINES);
+    uniform unsigned int new_width = width + 2;
 
-    unsigned int new_width = width + 2;
-
-    for (unsigned int i = 1; i <= height; i++) {
-        for (unsigned int j = 1; j <= width; j++) {
+    for (uniform unsigned int i = 1; i <= height; i++) {
+        foreach (j = 1 ... width + 1) {
             /*
              * [tl  t tr]
              * [ l cc  r]
@@ -329,26 +206,16 @@ static void thin_lines(
             dst[3 * cc_ix + 2] = color[2];
         }
     }
-
-    extend_rgb(dst, width, height);
-
-    FINISH_ACTIVITY(ACTIVITY_THINLINES);
 }
 
-static inline float clamp(float x, float lower, float upper)
+export void compute_gradient(
+    uniform unsigned int width, uniform unsigned int height,
+    uniform float src[], uniform float dst[])
 {
-    return x < lower ? lower : (x > upper ? upper : x);
-}
+    uniform unsigned int new_width = width + 2;
 
-static void compute_gradient(unsigned int width, unsigned int height,
-    float *src, float *dst)
-{
-    START_ACTIVITY(ACTIVITY_GRADIENT);
-
-    unsigned int new_width = width + 2;
-
-    for (unsigned int i = 1; i <= height; i++) {
-        for (unsigned int j = 1; j <= width; j++) {
+    for (uniform unsigned int i = 1; i <= height; i++) {
+        foreach (j = 1 ... width + 1) {
             /*
              * [tl  t tr]
              * [ l cc  r]
@@ -391,13 +258,9 @@ static void compute_gradient(unsigned int width, unsigned int height,
                 1.0f - clamp(sqrt(xgrad * xgrad + ygrad * ygrad), 0.0f, 1.0f);
         }
     }
-
-    extend(dst, width, height);
-
-    FINISH_ACTIVITY(ACTIVITY_GRADIENT);
 }
 
-static inline void get_average(float strength, float *src, float *dst,
+inline void get_average(float strength, float *src, float *dst,
     int cc, int a, int b, int c)
 {
     dst[cc * 3] = src[cc * 3] * (1 - strength) +
@@ -408,15 +271,14 @@ static inline void get_average(float strength, float *src, float *dst,
         ((src[a * 3 + 2] + src[b * 3 + 2] + src[c * 3 + 2]) / 3) * strength;
 }
 
-static void refine(float strength, unsigned int width, unsigned int height,
-    float *image, float *gradients, float *dst)
+export void refine(
+    uniform float strength, uniform unsigned int width, uniform unsigned int height,
+    uniform float image[], uniform float gradients[], uniform float dst[])
 {
-    START_ACTIVITY(ACTIVITY_REFINE);
+    uniform unsigned int new_width = width + 2;
 
-    unsigned int new_width = width + 2;
-
-    for (unsigned int i = 1; i <= height; i++) {
-        for (unsigned int j = 1; j <= width; j++) {
+    for (uniform unsigned int i = 1; i <= height; i++) {
+        foreach (j = 1 ... width + 1) {
             /*
              * [tl  t tr]
              * [ l cc  r]
@@ -520,25 +382,20 @@ static void refine(float strength, unsigned int width, unsigned int height,
             dst[3 * cc_ix + 2] = image[3 * cc_ix + 2];
         }
     }
-
-    /* this is the final step, no need to extend the border */
-
-    FINISH_ACTIVITY(ACTIVITY_REFINE);
 }
 
-static inline unsigned char quantize(float x)
+inline unsigned int8 quantize(float x)
 {
     int r = x * 255;
     return r < 0 ? 0 : (r > 255 ? 255 : r);
 }
 
-static void encode(unsigned int width, unsigned int height, float *src,
-    unsigned char *dst)
+export void encode(
+    uniform unsigned int width, uniform unsigned int height,
+    uniform float src[], uniform unsigned int8 dst[])
 {
-    START_ACTIVITY(ACTIVITY_ENCODE);
-
-    for (unsigned int i = 0; i < height; i++) {
-        for (unsigned int j = 0; j < width; j++) {
+    for (uniform unsigned int i = 0; i < height; i++) {
+        foreach (j = 0 ... width) {
             int old_ix = 3 * ((i + 1) * (width + 2) + j + 1);
             int new_ix = 4 * (i * width + j);
 
@@ -548,31 +405,4 @@ static void encode(unsigned int width, unsigned int height, float *src,
             dst[new_ix + 3] = 255;
         }
     }
-
-    FINISH_ACTIVITY(ACTIVITY_ENCODE);
-}
-
-void Anime4kSeq::run()
-{
-    decode(old_width_, old_height_, image_, original_);
-    linear_upscale(old_width_, old_height_, original_,
-        width_, height_, enlarge_);
-    compute_luminance(width_, height_, enlarge_, lum_);
-    thin_lines(strength_thinlines_, width_, height_,
-        enlarge_, lum_, thinlines_);
-    compute_luminance(width_, height_, thinlines_, lum_);
-    compute_gradient(width_, height_, lum_, gradients_);
-    refine(strength_refine_, width_, height_, thinlines_, gradients_, refined_);
-    encode(width_, height_, refined_, result_);
-}
-
-Anime4kSeq::~Anime4kSeq()
-{
-    delete [] original_;
-    delete [] enlarge_;
-    delete [] lum_;
-    delete [] thinlines_;
-    delete [] gradients_;
-    delete [] refined_;
-    delete [] result_;
 }
