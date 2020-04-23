@@ -1,4 +1,5 @@
 #include "anime4k_cuda.h"
+#include "instrument.h"
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -47,7 +48,6 @@ Anime4kCuda::Anime4kCuda(
     cudaMalloc(&cudaImage, param.src_bytes);
     cudaMalloc(&cudaResult, param.dst_bytes);
     cudaMemcpyToSymbol(cudaParam, &param, sizeof(Param));
-    cudaMemcpy(cudaImage, image, param.src_bytes,cudaMemcpyHostToDevice);
 }
 
 void Anime4kCuda::run()
@@ -55,8 +55,8 @@ void Anime4kCuda::run()
     dim3 gridDim((param.dst_width+REGIONW-1)/REGIONW, 
                 (param.dst_height+REGIONH-1)/REGIONH);
     dim3 blockDim(THREADW,THREADH);
+    cudaMemcpy(cudaImage, image_, param.src_bytes,cudaMemcpyHostToDevice);
     kernel<<<gridDim,blockDim>>>(cudaImage,cudaResult);
-    cudaCheckError( cudaDeviceSynchronize() )
     cudaMemcpy(result_, cudaResult, param.dst_bytes,cudaMemcpyDeviceToHost);
 
 }
