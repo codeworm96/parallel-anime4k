@@ -384,25 +384,22 @@ export void refine(
     }
 }
 
-inline unsigned int8 quantize(float x)
+inline int quantize(float x)
 {
     int r = x * 255;
-    return r < 0 ? 0 : (r > 255 ? 255 : r);
+    return clamp(r, 0, 255);
 }
 
 export void encode(
     uniform unsigned int width, uniform unsigned int height,
-    uniform float src[], uniform unsigned int8 dst[])
+    uniform float src[], uniform int dst[])
 {
     for (uniform unsigned int i = 0; i < height; i++) {
         foreach (j = 0 ... width) {
             int old_ix = 3 * ((i + 1) * (width + 2) + j + 1);
-            int new_ix = 4 * (i * width + j);
+            int new_ix = i * width + j;
 
-            dst[new_ix] = quantize(src[old_ix]);
-            dst[new_ix + 1] = quantize(src[old_ix + 1]);
-            dst[new_ix + 2] = quantize(src[old_ix + 2]);
-            dst[new_ix + 3] = 255;
+            dst[new_ix] = 0xFF000000 | (quantize(src[old_ix + 2]) << 16) | (quantize(src[old_ix + 1]) << 8) | quantize(src[old_ix]);
         }
     }
 }

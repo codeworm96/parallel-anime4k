@@ -137,7 +137,7 @@ void Anime4kIspc::run()
     FINISH_ACTIVITY(ACTIVITY_REFINE);
 
     START_ACTIVITY(ACTIVITY_ENCODE);
-    ispc::encode(width_, height_, refined_, result_);
+    ispc::encode(width_, height_, refined_, (int *)result_);
     FINISH_ACTIVITY(ACTIVITY_ENCODE);
 }
 
