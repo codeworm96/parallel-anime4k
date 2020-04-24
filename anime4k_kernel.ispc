@@ -7,16 +7,17 @@ inline float max3v(float a, float b, float c) {
 }
 
 export void decode(
-    uniform unsigned int width, uniform unsigned int height,
-    uniform unsigned int8 src[], uniform float dst[])
+    uniform unsigned int width, uniform unsigned int height, uniform int src[],
+    uniform float red[], uniform float green[], uniform float blue[])
 {
     for (uniform unsigned int i = 0; i < height; i++) {
         foreach (j = 0 ... width) {
-            int old_ix = 4 * (i * width + j);
-            int new_ix = 3 * ((i + 1) * (width + 2) + j + 1);
-            dst[new_ix] = src[old_ix] / 255.0f;
-            dst[new_ix + 1] = src[old_ix + 1] / 255.0f;
-            dst[new_ix + 2] = src[old_ix + 2] / 255.0f;
+            int old_ix = i * width + j;
+            int new_ix = (i + 1) * (width + 2) + j + 1;
+            int rgba = src[old_ix];
+            red[new_ix] = (rgba & 0xFF) / 255.0f;
+            green[new_ix] = ((rgba >> 8) & 0xFF) / 255.0f;
+            blue[new_ix] = ((rgba >> 16) & 0xFF) / 255.0f;
         }
     }
 }
@@ -31,8 +32,10 @@ inline float interpolate(
 }
 
 export void linear_upscale(
-    uniform unsigned int old_width, uniform unsigned int old_height, uniform float src[],
-    uniform unsigned int width, uniform unsigned int height, uniform float dst[])
+    uniform unsigned int old_width, uniform unsigned int old_height,
+    uniform float src_red[], uniform float src_green[], uniform float src_blue[],
+    uniform unsigned int width, uniform unsigned int height,
+    uniform float dst_red[], uniform float dst_green[], uniform float dst_blue[])
 {
     for (uniform unsigned int i = 0; i < height; i++) {
         foreach(j = 0 ... width) {
@@ -45,62 +48,64 @@ export void linear_upscale(
             float f = x - floor_x;
             float g = y - floor_y;
 
-            int ix = 3 * ((i + 1) * (width + 2) + j + 1);
-            int tl = 3 * (h * (old_width + 2) + w);
-            int tr = tl + 3;
-            int bl = tl + 3 * (old_width + 2);
-            int br = bl + 3;
+            int ix = (i + 1) * (width + 2) + j + 1;
+            int tl = h * (old_width + 2) + w;
+            int tr = tl + 1;
+            int bl = tl + old_width + 2;
+            int br = bl + 1;
 
-            dst[ix] = interpolate(
-                src[tl], src[tr],
-                src[bl], src[br], f, g);
+            dst_red[ix] = interpolate(
+                src_red[tl], src_red[tr],
+                src_red[bl], src_red[br], f, g);
 
-            dst[ix + 1] = interpolate(
-                src[tl + 1], src[tr + 1],
-                src[bl + 1], src[br + 1], f, g);
+            dst_green[ix] = interpolate(
+                src_green[tl], src_green[tr],
+                src_green[bl], src_green[br], f, g);
 
-            dst[ix + 2] = interpolate(
-                src[tl + 2], src[tr + 2],
-                src[bl + 2], src[br + 2], f, g);
+            dst_blue[ix] = interpolate(
+                src_blue[tl], src_blue[tr],
+                src_blue[bl], src_blue[br], f, g);
         }
     }
 }
 
 export void compute_luminance(
     uniform unsigned int width, uniform unsigned int height,
-    uniform float src[], uniform float dst[])
+    uniform float red[], uniform float green[], uniform float blue[],
+    uniform float dst[])
 {
     for (uniform unsigned int i = 0; i < height + 2; i++) {
         foreach (j = 0 ... width + 2) {
-            int lum_ix = i * (width + 2) + j;
-            int ix = 3 * lum_ix;
-
-            dst[lum_ix] =
-                (src[ix] * 2 + src[ix + 1] * 3 + src[ix + 2]) / 6;
+            int ix = i * (width + 2) + j;
+            dst[ix] = (red[ix] * 2 + green[ix] * 3 + blue[ix]) / 6;
         }
     }
 }
 
-inline void get_largest(float strength, float *image, float *lum,
+inline void get_largest(uniform float strength,
+    uniform float red[], uniform float green[], uniform float blue[],
+    uniform float lum[],
     float color[4], int cc, int a, int b, int c)
 {
     float new_lum = lum[cc] * (1 - strength) +
         ((lum[a] + lum[b] + lum[c]) / 3) * strength;
     
     if (new_lum > color[3]) {
-        color[0] = image[cc * 3] * (1 - strength) +
-            ((image[a * 3] + image[b * 3] + image[c * 3]) / 3) * strength;
-        color[1] = image[cc * 3 + 1] * (1 - strength) +
-            ((image[a * 3 + 1] + image[b * 3 + 1] + image[c * 3 + 1]) / 3) * strength;
-        color[2] = image[cc * 3 + 2] * (1 - strength) +
-            ((image[a * 3 + 2] + image[b * 3 + 2] + image[c * 3 + 2]) / 3) * strength;
+        color[0] = red[cc] * (1 - strength) +
+            ((red[a] + red[b] + red[c]) / 3) * strength;
+        color[1] = green[cc] * (1 - strength) +
+            ((green[a] + green[b] + green[c]) / 3) * strength;
+        color[2] = blue[cc] * (1 - strength) +
+            ((blue[a] + blue[b] + blue[c]) / 3) * strength;
         color[3] = new_lum;
     }
 }
 
 export void thin_lines(
     uniform float strength, uniform unsigned int width, uniform unsigned int height,
-    uniform float image[], uniform float lum[], uniform float dst[])
+    uniform float image_red[], uniform float image_green[], uniform float image_blue[],
+    uniform float lum[],
+    uniform float dst_red[], uniform float dst_green[], uniform float dst_blue[])
 {
     uniform unsigned int new_width = width + 2;
 
@@ -132,9 +137,9 @@ export void thin_lines(
             float br = lum[br_ix];
 
             float color[4];
-            color[0] = image[3 * cc_ix];
-            color[1] = image[3 * cc_ix + 1];
-            color[2] = image[3 * cc_ix + 2];
+            color[0] = image_red[cc_ix];
+            color[1] = image_green[cc_ix];
+            color[2] = image_blue[cc_ix];
             color[3] = cc;
 
             /* pattern 0 and 4 */
@@ -142,14 +147,14 @@ export void thin_lines(
             float minLight = min3v(tl, t, tr);
 
             if (minLight > cc && minLight > maxDark) {
-                get_largest(strength, image, lum, color,
-                    cc_ix, tl_ix, t_ix, tr_ix);
+                get_largest(strength, image_red, image_green, image_blue,
+                    lum, color, cc_ix, tl_ix, t_ix, tr_ix);
             } else {
                 maxDark = max3v(tl, t, tr);
                 minLight = min3v(br, b, bl);
                 if (minLight > cc && minLight > maxDark) {
-                    get_largest(strength, image, lum, color,
-                        cc_ix, br_ix, b_ix, bl_ix);
+                    get_largest(strength, image_red, image_green, image_blue,
+                        lum, color, cc_ix, br_ix, b_ix, bl_ix);
                 }
             }
 
@@ -158,14 +163,14 @@ export void thin_lines(
             minLight = min3v(r, t, tr);
 
             if (minLight > maxDark) {
-                get_largest(strength, image, lum, color,
-                    cc_ix, r_ix, t_ix, tr_ix);
+                get_largest(strength, image_red, image_green, image_blue,
+                    lum, color, cc_ix, r_ix, t_ix, tr_ix);
             } else {
                 maxDark = max3v(cc, r, t);
                 minLight = min3v(bl, l, b);
                 if (minLight > maxDark) {
-                    get_largest(strength, image, lum, color,
-                        cc_ix, bl_ix, l_ix, b_ix);
+                    get_largest(strength, image_red, image_green, image_blue,
+                        lum, color, cc_ix, bl_ix, l_ix, b_ix);
                 }
             }
 
@@ -174,14 +179,14 @@ export void thin_lines(
             minLight = min3v(r, br, tr);
 
             if (minLight > cc && minLight > maxDark) {
-                get_largest(strength, image, lum, color,
-                    cc_ix, r_ix, br_ix, tr_ix);
+                get_largest(strength, image_red, image_green, image_blue,
+                    lum, color, cc_ix, r_ix, br_ix, tr_ix);
             } else {
                 maxDark = max3v(r, br, tr);
                 minLight = min3v(l, tl, bl);
                 if (minLight > cc && minLight > maxDark) {
-                    get_largest(strength, image, lum, color,
-                        cc_ix, l_ix, tl_ix, bl_ix);
+                    get_largest(strength, image_red, image_green, image_blue,
+                        lum, color,cc_ix, l_ix, tl_ix, bl_ix);
                 }
             }
 
@@ -190,20 +195,20 @@ export void thin_lines(
             minLight = min3v(r, br, b);
 
             if (minLight > maxDark) {
-                get_largest(strength, image, lum, color,
-                    cc_ix, r_ix, br_ix, b_ix);
+                get_largest(strength, image_red, image_green, image_blue,
+                    lum, color, cc_ix, r_ix, br_ix, b_ix);
             } else {
                 maxDark = max3v(cc, r, b);
                 minLight = min3v(t, l, tl);
                 if (minLight > maxDark) {
-                    get_largest(strength, image, lum, color,
-                        cc_ix, t_ix, l_ix, tl_ix);
+                    get_largest(strength, image_red, image_green, image_blue,
+                        lum, color, cc_ix, t_ix, l_ix, tl_ix);
                 }
             }
 
-            dst[3 * cc_ix] = color[0];
-            dst[3 * cc_ix + 1] = color[1];
-            dst[3 * cc_ix + 2] = color[2];
+            dst_red[cc_ix] = color[0];
+            dst_green[cc_ix] = color[1];
+            dst_blue[cc_ix] = color[2];
         }
     }
 }
@@ -260,20 +265,24 @@ export void compute_gradient(
     }
 }
 
-inline void get_average(float strength, float *src, float *dst,
+inline void get_average(uniform float strength,
+    uniform float src_red[], uniform float src_green[], uniform float src_blue[],
+    uniform float dst_red[], uniform float dst_green[], uniform float dst_blue[],
     int cc, int a, int b, int c)
 {
-    dst[cc * 3] = src[cc * 3] * (1 - strength) +
-        ((src[a * 3] + src[b * 3] + src[c * 3]) / 3) * strength;
-    dst[cc * 3 + 1] = src[cc * 3 + 1] * (1 - strength) +
-        ((src[a * 3 + 1] + src[b * 3 + 1] + src[c * 3 + 1]) / 3) * strength;
-    dst[cc * 3 + 2] = src[cc * 3 + 2] * (1 - strength) +
-        ((src[a * 3 + 2] + src[b * 3 + 2] + src[c * 3 + 2]) / 3) * strength;
+    dst_red[cc] = src_red[cc] * (1 - strength) +
+        ((src_red[a] + src_red[b] + src_red[c]) / 3) * strength;
+    dst_green[cc] = src_green[cc] * (1 - strength) +
+        ((src_green[a] + src_green[b] + src_green[c]) / 3) * strength;
+    dst_blue[cc] = src_blue[cc] * (1 - strength) +
+        ((src_blue[a] + src_blue[b] + src_blue[c]) / 3) * strength;
 }
 
 export void refine(
     uniform float strength, uniform unsigned int width, uniform unsigned int height,
-    uniform float image[], uniform float gradients[], uniform float dst[])
+    uniform float image_red[], uniform float image_green[], uniform float image_blue[],
+    uniform float gradients[],
+    uniform float dst_red[], uniform float dst_green[], uniform float dst_blue[])
 {
     uniform unsigned int new_width = width + 2;
 
@@ -309,14 +318,16 @@ export void refine(
             float minLight = min3v(tl, t, tr);
 
             if (minLight > cc && minLight > maxDark) {
-                get_average(strength, image, dst,
+                get_average(strength, image_red, image_green, image_blue,
+                    dst_red, dst_green, dst_blue,
                     cc_ix, tl_ix, t_ix, tr_ix);
                 continue;
             } else {
                 maxDark = max3v(tl, t, tr);
                 minLight = min3v(br, b, bl);
                 if (minLight > cc && minLight > maxDark) {
-                    get_average(strength, image, dst,
+                    get_average(strength, image_red, image_green, image_blue,
+                        dst_red, dst_green, dst_blue,
                         cc_ix, br_ix, b_ix, bl_ix);
                     continue;
                 }
@@ -327,14 +338,16 @@ export void refine(
             minLight = min3v(r, t, tr);
 
             if (minLight > maxDark) {
-                get_average(strength, image, dst,
+                get_average(strength, image_red, image_green, image_blue,
+                    dst_red, dst_green, dst_blue,
                     cc_ix, r_ix, t_ix, tr_ix);
                 continue;
             } else {
                 maxDark = max3v(cc, r, t);
                 minLight = min3v(bl, l, b);
                 if (minLight > maxDark) {
-                    get_average(strength, image, dst,
+                    get_average(strength, image_red, image_green, image_blue,
+                        dst_red, dst_green, dst_blue,
                         cc_ix, bl_ix, l_ix, b_ix);
                     continue;
                 }
@@ -345,14 +358,16 @@ export void refine(
             minLight = min3v(r, br, tr);
 
             if (minLight > cc && minLight > maxDark) {
-                get_average(strength, image, dst,
+                get_average(strength, image_red, image_green, image_blue,
+                    dst_red, dst_green, dst_blue,
                     cc_ix, r_ix, br_ix, tr_ix);
                 continue;
             } else {
                 maxDark = max3v(r, br, tr);
                 minLight = min3v(l, tl, bl);
                 if (minLight > cc && minLight > maxDark) {
-                    get_average(strength, image, dst,
+                    get_average(strength, image_red, image_green, image_blue,
+                        dst_red, dst_green, dst_blue,
                         cc_ix, l_ix, tl_ix, bl_ix);
                     continue;
                 }
@@ -363,23 +378,25 @@ export void refine(
             minLight = min3v(r, br, b);
 
             if (minLight > maxDark) {
-                get_average(strength, image, dst,
+                get_average(strength, image_red, image_green, image_blue,
+                    dst_red, dst_green, dst_blue,
                     cc_ix, r_ix, br_ix, b_ix);
                 continue;
             } else {
                 maxDark = max3v(cc, r, b);
                 minLight = min3v(t, l, tl);
                 if (minLight > maxDark) {
-                    get_average(strength, image, dst,
+                    get_average(strength, image_red, image_green, image_blue,
+                        dst_red, dst_green, dst_blue,
                         cc_ix, t_ix, l_ix, tl_ix);
                     continue;
                 }
             }
 
             /* fallback */
-            dst[3 * cc_ix] = image[3 * cc_ix];
-            dst[3 * cc_ix + 1] = image[3 * cc_ix + 1];
-            dst[3 * cc_ix + 2] = image[3 * cc_ix + 2];
+            dst_red[cc_ix] = image_red[cc_ix];
+            dst_green[cc_ix] = image_green[cc_ix];
+            dst_blue[cc_ix] = image_blue[cc_ix];
         }
     }
 }
@@ -392,14 +409,20 @@ inline int quantize(float x)
 
 export void encode(
     uniform unsigned int width, uniform unsigned int height,
-    uniform float src[], uniform int dst[])
+    uniform float red[], uniform float green[], uniform float blue[],
+    uniform int dst[])
 {
     for (uniform unsigned int i = 0; i < height; i++) {
         foreach (j = 0 ... width) {
-            int old_ix = 3 * ((i + 1) * (width + 2) + j + 1);
+            int old_ix = (i + 1) * (width + 2) + j + 1;
             int new_ix = i * width + j;
+            int rgba = 0xFF000000;
 
-            dst[new_ix] = 0xFF000000 | (quantize(src[old_ix + 2]) << 16) | (quantize(src[old_ix + 1]) << 8) | quantize(src[old_ix]);
+            rgba |= quantize(blue[old_ix]) << 16;
+            rgba |= quantize(green[old_ix]) << 8;
+            rgba |= quantize(red[old_ix]);
+
+            dst[new_ix] = rgba;
         }
     }
 }
