@@ -22,9 +22,6 @@ private:
     float *thinlines_blue_;
     float *lum2_;
     float *gradients_;
-    float *refined_red_;
-    float *refined_green_;
-    float *refined_blue_;
     unsigned char *result_;
     float strength_thinlines_;
     float strength_refine_;

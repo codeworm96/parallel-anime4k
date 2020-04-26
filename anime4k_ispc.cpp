@@ -42,10 +42,6 @@ Anime4kIspc::Anime4kIspc(
 
     gradients_ = new float[pixels];
 
-    refined_red_ = new float[pixels];
-    refined_green_ = new float[pixels];
-    refined_blue_ = new float[pixels];
-
     // result does not need ghost pixels
     result_ = new unsigned char[4 * new_width * new_height];
 
@@ -119,13 +115,8 @@ void Anime4kIspc::run()
     START_ACTIVITY(ACTIVITY_REFINE);
     ispc::refine(strength_refine_, width_, height_,
         thinlines_red_, thinlines_green_, thinlines_blue_,
-        gradients_, refined_red_, refined_green_, refined_blue_);
+        gradients_, (int *)result_);
     FINISH_ACTIVITY(ACTIVITY_REFINE);
-
-    START_ACTIVITY(ACTIVITY_ENCODE);
-    ispc::encode(width_, height_, refined_red_, refined_green_, refined_blue_,
-        (int *)result_);
-    FINISH_ACTIVITY(ACTIVITY_ENCODE);
 }
 
 Anime4kIspc::~Anime4kIspc()
@@ -142,8 +133,5 @@ Anime4kIspc::~Anime4kIspc()
     delete [] thinlines_blue_;
     delete [] lum2_;
     delete [] gradients_;
-    delete [] refined_red_;
-    delete [] refined_green_;
-    delete [] refined_blue_;
     delete [] result_;
 }
