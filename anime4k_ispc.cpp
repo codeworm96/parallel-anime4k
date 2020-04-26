@@ -32,11 +32,13 @@ Anime4kIspc::Anime4kIspc(
     enlarge_green_ = new float[pixels];
     enlarge_blue_ = new float[pixels];
 
-    lum_ = new float[pixels];
+    lum1_ = new float[pixels];
 
     thinlines_red_ = new float[pixels];
     thinlines_green_ = new float[pixels];
     thinlines_blue_ = new float[pixels];
+
+    lum2_ = new float[pixels];
 
     gradients_ = new float[pixels];
 
@@ -92,33 +94,25 @@ void Anime4kIspc::run()
     ispc::linear_upscale(old_width_, old_height_,
         original_red_, original_green_, original_blue_,
         width_, height_,
-        enlarge_red_, enlarge_green_, enlarge_blue_);
+        enlarge_red_, enlarge_green_, enlarge_blue_, lum1_);
     extend(enlarge_red_, width_, height_);
     extend(enlarge_green_, width_, height_);
     extend(enlarge_blue_, width_, height_);
+    extend(lum1_, width_, height_);
     FINISH_ACTIVITY(ACTIVITY_LINEAR);
-
-    START_ACTIVITY(ACTIVITY_LUM);
-    ispc::compute_luminance(width_, height_,
-        enlarge_red_, enlarge_green_, enlarge_blue_, lum_);
-    FINISH_ACTIVITY(ACTIVITY_LUM);
 
     START_ACTIVITY(ACTIVITY_THINLINES);
     ispc::thin_lines(strength_thinlines_, width_, height_,
-        enlarge_red_, enlarge_green_, enlarge_blue_,
-        lum_, thinlines_red_, thinlines_green_, thinlines_blue_);
+        enlarge_red_, enlarge_green_, enlarge_blue_, lum1_,
+        thinlines_red_, thinlines_green_, thinlines_blue_, lum2_);
     extend(thinlines_red_, width_, height_);
     extend(thinlines_green_, width_, height_);
     extend(thinlines_blue_, width_, height_);
+    extend(lum2_, width_, height_);
     FINISH_ACTIVITY(ACTIVITY_THINLINES);
 
-    START_ACTIVITY(ACTIVITY_LUM);
-    ispc::compute_luminance(width_, height_,
-        thinlines_red_, thinlines_green_, thinlines_blue_, lum_);
-    FINISH_ACTIVITY(ACTIVITY_LUM);
-
     START_ACTIVITY(ACTIVITY_GRADIENT);
-    ispc::compute_gradient(width_, height_, lum_, gradients_);
+    ispc::compute_gradient(width_, height_, lum2_, gradients_);
     extend(gradients_, width_, height_);
     FINISH_ACTIVITY(ACTIVITY_GRADIENT);
 
@@ -142,10 +136,11 @@ Anime4kIspc::~Anime4kIspc()
     delete [] enlarge_red_;
     delete [] enlarge_green_;
     delete [] enlarge_blue_;
-    delete [] lum_;
+    delete [] lum1_;
     delete [] thinlines_red_;
     delete [] thinlines_green_;
     delete [] thinlines_blue_;
+    delete [] lum2_;
     delete [] gradients_;
     delete [] refined_red_;
     delete [] refined_green_;

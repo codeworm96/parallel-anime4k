@@ -16,10 +16,11 @@ private:
     float *enlarge_red_;
     float *enlarge_green_;
     float *enlarge_blue_;
-    float *lum_;
+    float *lum1_;
     float *thinlines_red_;
     float *thinlines_green_;
     float *thinlines_blue_;
+    float *lum2_;
     float *gradients_;
     float *refined_red_;
     float *refined_green_;

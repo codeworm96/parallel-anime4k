@@ -35,7 +35,7 @@ export void linear_upscale(
     uniform unsigned int old_width, uniform unsigned int old_height,
     uniform float src_red[], uniform float src_green[], uniform float src_blue[],
     uniform unsigned int width, uniform unsigned int height,
-    uniform float dst_red[], uniform float dst_green[], uniform float dst_blue[])
+    uniform float dst_red[], uniform float dst_green[], uniform float dst_blue[], uniform float lum[])
 {
     for (uniform unsigned int i = 0; i < height; i++) {
         foreach(j = 0 ... width) {
@@ -54,30 +54,22 @@ export void linear_upscale(
             int bl = tl + old_width + 2;
             int br = bl + 1;
 
-            dst_red[ix] = interpolate(
+            float red = interpolate(
                 src_red[tl], src_red[tr],
                 src_red[bl], src_red[br], f, g);
 
-            dst_green[ix] = interpolate(
+            float green = interpolate(
                 src_green[tl], src_green[tr],
                 src_green[bl], src_green[br], f, g);
 
-            dst_blue[ix] = interpolate(
+            float blue = interpolate(
                 src_blue[tl], src_blue[tr],
                 src_blue[bl], src_blue[br], f, g);
-        }
-    }
-}
 
-export void compute_luminance(
-    uniform unsigned int width, uniform unsigned int height,
-    uniform float red[], uniform float green[], uniform float blue[],
-    uniform float dst[])
-{
-    for (uniform unsigned int i = 0; i < height + 2; i++) {
-        foreach (j = 0 ... width + 2) {
-            int ix = i * (width + 2) + j;
-            dst[ix] = (red[ix] * 2 + green[ix] * 3 + blue[ix]) / 6;
+            lum[ix] = (red * 2 + green * 3 + blue) / 6;
+            dst_red[ix] = red;
+            dst_green[ix] = green;
+            dst_blue[ix] = blue;
         }
     }
 }
@@ -104,8 +96,9 @@ inline void get_largest(uniform float strength,
 export void thin_lines(
     uniform float strength, uniform unsigned int width, uniform unsigned int height,
     uniform float image_red[], uniform float image_green[], uniform float image_blue[],
-    uniform float lum[],
-    uniform float dst_red[], uniform float dst_green[], uniform float dst_blue[])
+    uniform float src_lum[],
+    uniform float dst_red[], uniform float dst_green[], uniform float dst_blue[],
+    uniform float dst_lum[])
 {
     uniform unsigned int new_width = width + 2;
 
@@ -126,15 +119,15 @@ export void thin_lines(
             int bl_ix = b_ix - 1;
             int br_ix = b_ix + 1;
 
-            float cc = lum[cc_ix];
-            float r = lum[r_ix];
-            float l = lum[l_ix];
-            float t = lum[t_ix];
-            float tl = lum[tl_ix];
-            float tr = lum[tr_ix];
-            float b = lum[b_ix];
-            float bl = lum[bl_ix];
-            float br = lum[br_ix];
+            float cc = src_lum[cc_ix];
+            float r = src_lum[r_ix];
+            float l = src_lum[l_ix];
+            float t = src_lum[t_ix];
+            float tl = src_lum[tl_ix];
+            float tr = src_lum[tr_ix];
+            float b = src_lum[b_ix];
+            float bl = src_lum[bl_ix];
+            float br = src_lum[br_ix];
 
             float color[4];
             color[0] = image_red[cc_ix];
@@ -148,13 +141,13 @@ export void thin_lines(
 
             if (minLight > cc && minLight > maxDark) {
                 get_largest(strength, image_red, image_green, image_blue,
-                    lum, color, cc_ix, tl_ix, t_ix, tr_ix);
+                    src_lum, color, cc_ix, tl_ix, t_ix, tr_ix);
             } else {
                 maxDark = max3v(tl, t, tr);
                 minLight = min3v(br, b, bl);
                 if (minLight > cc && minLight > maxDark) {
                     get_largest(strength, image_red, image_green, image_blue,
-                        lum, color, cc_ix, br_ix, b_ix, bl_ix);
+                        src_lum, color, cc_ix, br_ix, b_ix, bl_ix);
                 }
             }
 
@@ -164,13 +157,13 @@ export void thin_lines(
 
             if (minLight > maxDark) {
                 get_largest(strength, image_red, image_green, image_blue,
-                    lum, color, cc_ix, r_ix, t_ix, tr_ix);
+                    src_lum, color, cc_ix, r_ix, t_ix, tr_ix);
             } else {
                 maxDark = max3v(cc, r, t);
                 minLight = min3v(bl, l, b);
                 if (minLight > maxDark) {
                     get_largest(strength, image_red, image_green, image_blue,
-                        lum, color, cc_ix, bl_ix, l_ix, b_ix);
+                        src_lum, color, cc_ix, bl_ix, l_ix, b_ix);
                 }
             }
 
@@ -180,13 +173,13 @@ export void thin_lines(
 
             if (minLight > cc && minLight > maxDark) {
                 get_largest(strength, image_red, image_green, image_blue,
-                    lum, color, cc_ix, r_ix, br_ix, tr_ix);
+                    src_lum, color, cc_ix, r_ix, br_ix, tr_ix);
             } else {
                 maxDark = max3v(r, br, tr);
                 minLight = min3v(l, tl, bl);
                 if (minLight > cc && minLight > maxDark) {
                     get_largest(strength, image_red, image_green, image_blue,
-                        lum, color,cc_ix, l_ix, tl_ix, bl_ix);
+                        src_lum, color,cc_ix, l_ix, tl_ix, bl_ix);
                 }
             }
 
@@ -196,16 +189,17 @@ export void thin_lines(
 
             if (minLight > maxDark) {
                 get_largest(strength, image_red, image_green, image_blue,
-                    lum, color, cc_ix, r_ix, br_ix, b_ix);
+                    src_lum, color, cc_ix, r_ix, br_ix, b_ix);
             } else {
                 maxDark = max3v(cc, r, b);
                 minLight = min3v(t, l, tl);
                 if (minLight > maxDark) {
                     get_largest(strength, image_red, image_green, image_blue,
-                        lum, color, cc_ix, t_ix, l_ix, tl_ix);
+                        src_lum, color, cc_ix, t_ix, l_ix, tl_ix);
                 }
             }
 
+            dst_lum[cc_ix] = (color[0] * 2 + color[1] * 3 + color[2]) / 6;
             dst_red[cc_ix] = color[0];
             dst_green[cc_ix] = color[1];
             dst_blue[cc_ix] = color[2];
