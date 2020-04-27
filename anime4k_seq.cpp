@@ -42,7 +42,6 @@ Anime4kSeq::Anime4kSeq(
     lum_ = new float[pixels];
     thinlines_ = new float[3 * pixels];
     gradients_ = new float[pixels];
-    refined_ = new float[3 * pixels];
 
     // result does not need ghost pixels
     result_ = new unsigned char[4 * new_width * new_height];
@@ -397,19 +396,30 @@ static void compute_gradient(unsigned int width, unsigned int height,
     FINISH_ACTIVITY(ACTIVITY_GRADIENT);
 }
 
-static inline void get_average(float strength, float *src, float *dst,
-    int cc, int a, int b, int c)
+static inline unsigned char quantize(float x)
 {
-    dst[cc * 3] = src[cc * 3] * (1 - strength) +
+    int r = x * 255;
+    return r < 0 ? 0 : (r > 255 ? 255 : r);
+}
+
+static inline void get_average(float strength, float *src, unsigned char *dst,
+    int ix, int cc, int a, int b, int c)
+{
+    float red = src[cc * 3] * (1 - strength) +
         ((src[a * 3] + src[b * 3] + src[c * 3]) / 3) * strength;
-    dst[cc * 3 + 1] = src[cc * 3 + 1] * (1 - strength) +
+    float green = src[cc * 3 + 1] * (1 - strength) +
         ((src[a * 3 + 1] + src[b * 3 + 1] + src[c * 3 + 1]) / 3) * strength;
-    dst[cc * 3 + 2] = src[cc * 3 + 2] * (1 - strength) +
+    float blue = src[cc * 3 + 2] * (1 - strength) +
         ((src[a * 3 + 2] + src[b * 3 + 2] + src[c * 3 + 2]) / 3) * strength;
+
+    dst[ix] = quantize(red);
+    dst[ix + 1] = quantize(green);
+    dst[ix + 2] = quantize(blue);
+    dst[ix + 3] = 255;
 }
 
 static void refine(float strength, unsigned int width, unsigned int height,
-    float *image, float *gradients, float *dst)
+    float *image, float *gradients, unsigned char *dst)
 {
     START_ACTIVITY(ACTIVITY_REFINE);
 
@@ -422,6 +432,7 @@ static void refine(float strength, unsigned int width, unsigned int height,
              * [ l cc  r]
              * [bl  b br]
              */
+            int ix = 4 * ((i - 1) * width + j - 1);
             int cc_ix = i * new_width + j;
             int r_ix = cc_ix + 1;
             int l_ix = cc_ix - 1;
@@ -448,14 +459,14 @@ static void refine(float strength, unsigned int width, unsigned int height,
 
             if (minLight > cc && minLight > maxDark) {
                 get_average(strength, image, dst,
-                    cc_ix, tl_ix, t_ix, tr_ix);
+                    ix, cc_ix, tl_ix, t_ix, tr_ix);
                 continue;
             } else {
                 maxDark = max3v(tl, t, tr);
                 minLight = min3v(br, b, bl);
                 if (minLight > cc && minLight > maxDark) {
                     get_average(strength, image, dst,
-                        cc_ix, br_ix, b_ix, bl_ix);
+                        ix, cc_ix, br_ix, b_ix, bl_ix);
                     continue;
                 }
             }
@@ -466,14 +477,14 @@ static void refine(float strength, unsigned int width, unsigned int height,
 
             if (minLight > maxDark) {
                 get_average(strength, image, dst,
-                    cc_ix, r_ix, t_ix, tr_ix);
+                    ix, cc_ix, r_ix, t_ix, tr_ix);
                 continue;
             } else {
                 maxDark = max3v(cc, r, t);
                 minLight = min3v(bl, l, b);
                 if (minLight > maxDark) {
                     get_average(strength, image, dst,
-                        cc_ix, bl_ix, l_ix, b_ix);
+                        ix, cc_ix, bl_ix, l_ix, b_ix);
                     continue;
                 }
             }
@@ -484,14 +495,14 @@ static void refine(float strength, unsigned int width, unsigned int height,
 
             if (minLight > cc && minLight > maxDark) {
                 get_average(strength, image, dst,
-                    cc_ix, r_ix, br_ix, tr_ix);
+                    ix, cc_ix, r_ix, br_ix, tr_ix);
                 continue;
             } else {
                 maxDark = max3v(r, br, tr);
                 minLight = min3v(l, tl, bl);
                 if (minLight > cc && minLight > maxDark) {
                     get_average(strength, image, dst,
-                        cc_ix, l_ix, tl_ix, bl_ix);
+                        ix, cc_ix, l_ix, tl_ix, bl_ix);
                     continue;
                 }
             }
@@ -502,54 +513,29 @@ static void refine(float strength, unsigned int width, unsigned int height,
 
             if (minLight > maxDark) {
                 get_average(strength, image, dst,
-                    cc_ix, r_ix, br_ix, b_ix);
+                    ix, cc_ix, r_ix, br_ix, b_ix);
                 continue;
             } else {
                 maxDark = max3v(cc, r, b);
                 minLight = min3v(t, l, tl);
                 if (minLight > maxDark) {
                     get_average(strength, image, dst,
-                        cc_ix, t_ix, l_ix, tl_ix);
+                        ix, cc_ix, t_ix, l_ix, tl_ix);
                     continue;
                 }
             }
 
             /* fallback */
-            dst[3 * cc_ix] = image[3 * cc_ix];
-            dst[3 * cc_ix + 1] = image[3 * cc_ix + 1];
-            dst[3 * cc_ix + 2] = image[3 * cc_ix + 2];
+            dst[ix] = quantize(image[3 * cc_ix]);
+            dst[ix + 1] = quantize(image[3 * cc_ix + 1]);
+            dst[ix + 2] = quantize(image[3 * cc_ix + 2]);
+            dst[ix + 3] = 255;
         }
     }
 
     /* this is the final step, no need to extend the border */
 
     FINISH_ACTIVITY(ACTIVITY_REFINE);
-}
-
-static inline unsigned char quantize(float x)
-{
-    int r = x * 255;
-    return r < 0 ? 0 : (r > 255 ? 255 : r);
-}
-
-static void encode(unsigned int width, unsigned int height, float *src,
-    unsigned char *dst)
-{
-    START_ACTIVITY(ACTIVITY_ENCODE);
-
-    for (unsigned int i = 0; i < height; i++) {
-        for (unsigned int j = 0; j < width; j++) {
-            int old_ix = 3 * ((i + 1) * (width + 2) + j + 1);
-            int new_ix = 4 * (i * width + j);
-
-            dst[new_ix] = quantize(src[old_ix]);
-            dst[new_ix + 1] = quantize(src[old_ix + 1]);
-            dst[new_ix + 2] = quantize(src[old_ix + 2]);
-            dst[new_ix + 3] = 255;
-        }
-    }
-
-    FINISH_ACTIVITY(ACTIVITY_ENCODE);
 }
 
 void Anime4kSeq::run()
@@ -562,8 +548,7 @@ void Anime4kSeq::run()
         enlarge_, lum_, thinlines_);
     compute_luminance(width_, height_, thinlines_, lum_);
     compute_gradient(width_, height_, lum_, gradients_);
-    refine(strength_refine_, width_, height_, thinlines_, gradients_, refined_);
-    encode(width_, height_, refined_, result_);
+    refine(strength_refine_, width_, height_, thinlines_, gradients_, result_);
 }
 
 Anime4kSeq::~Anime4kSeq()
@@ -573,6 +558,5 @@ Anime4kSeq::~Anime4kSeq()
     delete [] lum_;
     delete [] thinlines_;
     delete [] gradients_;
-    delete [] refined_;
     delete [] result_;
 }

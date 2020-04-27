@@ -15,7 +15,6 @@ private:
     float *lum_;
     float *thinlines_;
     float *gradients_;
-    float *refined_;
     unsigned char *result_;
     float strength_thinlines_;
     float strength_refine_;
