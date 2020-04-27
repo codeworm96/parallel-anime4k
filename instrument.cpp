@@ -12,7 +12,7 @@
 /* Instrument different sections of program */
 static const char *activity_name[ACTIVITY_COUNT] = {
     "overhead", "decode", "linear", "luminance",
-    "thin_lines", "gradient", "refine", "encode"
+    "thin_lines", "gradient", "refine"
 };
 
 static bool tracking = false;
