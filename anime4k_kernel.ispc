@@ -135,68 +135,68 @@ export void thin_lines(
             color[2] = image_blue[cc_ix];
             color[3] = cc;
 
-            /* pattern 0 and 4 */
+            /* pattern 0 */
             float maxDark = max3v(br, b, bl);
             float minLight = min3v(tl, t, tr);
-
             if (minLight > cc && minLight > maxDark) {
                 get_largest(strength, image_red, image_green, image_blue,
                     src_lum, color, cc_ix, tl_ix, t_ix, tr_ix);
-            } else {
-                maxDark = max3v(tl, t, tr);
-                minLight = min3v(br, b, bl);
-                if (minLight > cc && minLight > maxDark) {
-                    get_largest(strength, image_red, image_green, image_blue,
-                        src_lum, color, cc_ix, br_ix, b_ix, bl_ix);
-                }
             }
 
-            /* pattern 1 and 5 */
+            /* pattern 4 */
+            maxDark = max3v(tl, t, tr);
+            minLight = min3v(br, b, bl);
+            if (minLight > cc && minLight > maxDark) {
+                get_largest(strength, image_red, image_green, image_blue,
+                    src_lum, color, cc_ix, br_ix, b_ix, bl_ix);
+            }
+
+            /* pattern 1 */
             maxDark = max3v(cc, l, b);
             minLight = min3v(r, t, tr);
-
             if (minLight > maxDark) {
                 get_largest(strength, image_red, image_green, image_blue,
                     src_lum, color, cc_ix, r_ix, t_ix, tr_ix);
-            } else {
-                maxDark = max3v(cc, r, t);
-                minLight = min3v(bl, l, b);
-                if (minLight > maxDark) {
-                    get_largest(strength, image_red, image_green, image_blue,
-                        src_lum, color, cc_ix, bl_ix, l_ix, b_ix);
-                }
             }
 
-            /* pattern 2 and 6 */
+            /* pattern 5 */
+            maxDark = max3v(cc, r, t);
+            minLight = min3v(bl, l, b);
+            if (minLight > maxDark) {
+                get_largest(strength, image_red, image_green, image_blue,
+                    src_lum, color, cc_ix, bl_ix, l_ix, b_ix);
+            }
+
+            /* pattern 2 */
             maxDark = max3v(l, tl, bl);
             minLight = min3v(r, br, tr);
-
             if (minLight > cc && minLight > maxDark) {
                 get_largest(strength, image_red, image_green, image_blue,
                     src_lum, color, cc_ix, r_ix, br_ix, tr_ix);
-            } else {
-                maxDark = max3v(r, br, tr);
-                minLight = min3v(l, tl, bl);
-                if (minLight > cc && minLight > maxDark) {
-                    get_largest(strength, image_red, image_green, image_blue,
-                        src_lum, color,cc_ix, l_ix, tl_ix, bl_ix);
-                }
             }
 
-            /* pattern 3 and 7 */
+            /* pattern 6 */
+            maxDark = max3v(r, br, tr);
+            minLight = min3v(l, tl, bl);
+            if (minLight > cc && minLight > maxDark) {
+                get_largest(strength, image_red, image_green, image_blue,
+                    src_lum, color,cc_ix, l_ix, tl_ix, bl_ix);
+            }
+
+            /* pattern 3 */
             maxDark = max3v(cc, l, t);
             minLight = min3v(r, br, b);
-
             if (minLight > maxDark) {
                 get_largest(strength, image_red, image_green, image_blue,
                     src_lum, color, cc_ix, r_ix, br_ix, b_ix);
-            } else {
-                maxDark = max3v(cc, r, b);
-                minLight = min3v(t, l, tl);
-                if (minLight > maxDark) {
-                    get_largest(strength, image_red, image_green, image_blue,
-                        src_lum, color, cc_ix, t_ix, l_ix, tl_ix);
-                }
+            }
+
+            /* pattern 7 */
+            maxDark = max3v(cc, r, b);
+            minLight = min3v(t, l, tl);
+            if (minLight > maxDark) {
+                get_largest(strength, image_red, image_green, image_blue,
+                    src_lum, color, cc_ix, t_ix, l_ix, tl_ix);
             }
 
             dst_lum[cc_ix] = (color[0] * 2 + color[1] * 3 + color[2]) / 6;
