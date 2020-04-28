@@ -32,15 +32,15 @@ inline float interpolate(
 }
 
 export void linear_upscale(
-    uniform unsigned int old_width, uniform unsigned int old_height,
+    uniform int old_width, uniform int old_height,
     uniform float src_red[], uniform float src_green[], uniform float src_blue[],
-    uniform unsigned int width, uniform unsigned int height,
+    uniform int width, uniform int height,
     uniform float dst_red[], uniform float dst_green[], uniform float dst_blue[], uniform float lum[])
 {
-    for (uniform unsigned int i = 0; i < height; i++) {
+    for (uniform int i = 0; i < height; i++) {
         foreach(j = 0 ... width) {
             float x = (float)(i * old_height) / height;
-            float y = (float)(j * old_width) / width;
+            float y = (float)((int)j * old_width) / width;
             float floor_x = floor(x);
             float floor_y = floor(y);
             int h = (int)floor_x + 1;
