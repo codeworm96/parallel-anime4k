@@ -265,9 +265,8 @@ inline int quantize(float x)
     return clamp(r, 0, 255);
 }
 
-inline void get_average(uniform float strength,
+inline int get_average(uniform float strength,
     uniform float src_red[], uniform float src_green[], uniform float src_blue[],
-    uniform int dst[], int ix,
     int cc, int a, int b, int c)
 {
     float red = src_red[cc] * (1 - strength) +
@@ -282,7 +281,7 @@ inline void get_average(uniform float strength,
     rgba |= quantize(green) << 8;
     rgba |= quantize(red);
 
-    dst[ix] = rgba;
+    return rgba;
 }
 
 export void refine(
@@ -299,7 +298,6 @@ export void refine(
              * [ l cc  r]
              * [bl  b br]
              */
-            int ix = (i - 1) * width + (j - 1);
             int cc_ix = i * new_width + j;
             int r_ix = cc_ix + 1;
             int l_ix = cc_ix - 1;
@@ -321,13 +319,14 @@ export void refine(
             float br = gradients[br_ix];
 
             bool mask = true;
+            int res;
 
             /* pattern 0 */
             float maxDark = max3v(br, b, bl);
             float minLight = min3v(tl, t, tr);
             if (mask && minLight > cc && minLight > maxDark) {
-                get_average(strength, image_red, image_green, image_blue,
-                    dst, ix, cc_ix, tl_ix, t_ix, tr_ix);
+                res = get_average(strength, image_red, image_green, image_blue,
+                    cc_ix, tl_ix, t_ix, tr_ix);
                 mask = false;
             }
 
@@ -335,8 +334,8 @@ export void refine(
             maxDark = max3v(tl, t, tr);
             minLight = min3v(br, b, bl);
             if (mask && minLight > cc && minLight > maxDark) {
-                get_average(strength, image_red, image_green, image_blue,
-                    dst, ix, cc_ix, br_ix, b_ix, bl_ix);
+                res = get_average(strength, image_red, image_green, image_blue,
+                    cc_ix, br_ix, b_ix, bl_ix);
                 mask = false;
             }
 
@@ -344,8 +343,8 @@ export void refine(
             maxDark = max3v(cc, l, b);
             minLight = min3v(r, t, tr);
             if (mask && minLight > maxDark) {
-                get_average(strength, image_red, image_green, image_blue,
-                    dst, ix, cc_ix, r_ix, t_ix, tr_ix);
+                res = get_average(strength, image_red, image_green, image_blue,
+                    cc_ix, r_ix, t_ix, tr_ix);
                 mask = false;
             }
 
@@ -353,8 +352,8 @@ export void refine(
             maxDark = max3v(cc, r, t);
             minLight = min3v(bl, l, b);
             if (mask && minLight > maxDark) {
-                get_average(strength, image_red, image_green, image_blue,
-                    dst, ix, cc_ix, bl_ix, l_ix, b_ix);
+                res = get_average(strength, image_red, image_green, image_blue,
+                    cc_ix, bl_ix, l_ix, b_ix);
                 mask = false;
             }
 
@@ -362,8 +361,8 @@ export void refine(
             maxDark = max3v(l, tl, bl);
             minLight = min3v(r, br, tr);
             if (mask && minLight > cc && minLight > maxDark) {
-                get_average(strength, image_red, image_green, image_blue,
-                    dst, ix, cc_ix, r_ix, br_ix, tr_ix);
+                res = get_average(strength, image_red, image_green, image_blue,
+                    cc_ix, r_ix, br_ix, tr_ix);
                 mask = false;
             }
 
@@ -371,8 +370,8 @@ export void refine(
             maxDark = max3v(r, br, tr);
             minLight = min3v(l, tl, bl);
             if (mask && minLight > cc && minLight > maxDark) {
-                get_average(strength, image_red, image_green, image_blue,
-                    dst, ix, cc_ix, l_ix, tl_ix, bl_ix);
+                res = get_average(strength, image_red, image_green, image_blue,
+                    cc_ix, l_ix, tl_ix, bl_ix);
                 mask = false;
             }
 
@@ -380,8 +379,8 @@ export void refine(
             maxDark = max3v(cc, l, t);
             minLight = min3v(r, br, b);
             if (mask && minLight > maxDark) {
-                get_average(strength, image_red, image_green, image_blue,
-                    dst, ix, cc_ix, r_ix, br_ix, b_ix);
+                res = get_average(strength, image_red, image_green, image_blue,
+                    cc_ix, r_ix, br_ix, b_ix);
                 mask = false;
             }
 
@@ -389,8 +388,8 @@ export void refine(
             maxDark = max3v(cc, r, b);
             minLight = min3v(t, l, tl);
             if (mask && minLight > maxDark) {
-                get_average(strength, image_red, image_green, image_blue,
-                    dst, ix, cc_ix, t_ix, l_ix, tl_ix);
+                res = get_average(strength, image_red, image_green, image_blue,
+                    cc_ix, t_ix, l_ix, tl_ix);
                 mask = false;
             }
 
@@ -400,8 +399,11 @@ export void refine(
                 rgba |= quantize(image_blue[cc_ix]) << 16;
                 rgba |= quantize(image_green[cc_ix]) << 8;
                 rgba |= quantize(image_red[cc_ix]);
-                dst[ix] = rgba;
+                res = rgba;
             }
+
+            int ix = (i - 1) * width + (j - 1);
+            dst[ix] = res;
         }
     }
 }
