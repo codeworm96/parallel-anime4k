@@ -332,14 +332,19 @@ inline int get_average(uniform float strength,
     return rgba;
 }
 
-export void refine(
+#define REFINE_SPAN 1
+
+task void refine_task(
     uniform float strength, uniform unsigned int width, uniform unsigned int height,
     uniform float image_red[], uniform float image_green[], uniform float image_blue[],
     uniform float gradients[], uniform int dst[])
 {
     uniform unsigned int new_width = width + 2;
+    uniform unsigned int ibegin = taskIndex * REFINE_SPAN + 1;
+    uniform unsigned int iend =
+        min(taskIndex * REFINE_SPAN + REFINE_SPAN, height);
 
-    for (uniform unsigned int i = 1; i <= height; i++) {
+    for (uniform unsigned int i = ibegin; i <= iend; i++) {
         foreach (j = 1 ... width + 1) {
             /*
              * [tl  t tr]
@@ -456,22 +461,12 @@ export void refine(
     }
 }
 
-export void encode(
-    uniform unsigned int width, uniform unsigned int height,
-    uniform float red[], uniform float green[], uniform float blue[],
-    uniform int dst[])
+export void refine(
+    uniform float strength, uniform unsigned int width, uniform unsigned int height,
+    uniform float image_red[], uniform float image_green[], uniform float image_blue[],
+    uniform float gradients[], uniform int dst[])
 {
-    for (uniform unsigned int i = 0; i < height; i++) {
-        foreach (j = 0 ... width) {
-            int old_ix = (i + 1) * (width + 2) + j + 1;
-            int new_ix = i * width + j;
-            int rgba = 0xFF000000;
-
-            rgba |= quantize(blue[old_ix]) << 16;
-            rgba |= quantize(green[old_ix]) << 8;
-            rgba |= quantize(red[old_ix]);
-
-            dst[new_ix] = rgba;
-        }
-    }
+    uniform int taskCount = (height + REFINE_SPAN - 1) / REFINE_SPAN;
+    launch[taskCount] refine_task(strength, width, height, image_red, image_green, image_blue,
+        gradients, dst);
 }
