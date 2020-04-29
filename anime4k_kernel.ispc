@@ -6,11 +6,17 @@ inline float max3v(float a, float b, float c) {
     return max(max(a, b), c);
 }
 
-export void decode(
+#define DECODE_SPAN 1
+
+task void decode_task(
     uniform unsigned int width, uniform unsigned int height, uniform int src[],
     uniform float red[], uniform float green[], uniform float blue[])
 {
-    for (uniform unsigned int i = 0; i < height; i++) {
+    uniform unsigned int ibegin = taskIndex * DECODE_SPAN;
+    uniform unsigned int iend =
+        min(taskIndex * DECODE_SPAN + DECODE_SPAN, height);
+
+    for (uniform unsigned int i = ibegin; i < iend; i++) {
         foreach (j = 0 ... width) {
             int old_ix = i * width + j;
             int new_ix = (i + 1) * (width + 2) + j + 1;
@@ -20,6 +26,14 @@ export void decode(
             blue[new_ix] = ((rgba >> 16) & 0xFF) / 255.0f;
         }
     }
+}
+
+export void decode(
+    uniform unsigned int width, uniform unsigned int height, uniform int src[],
+    uniform float red[], uniform float green[], uniform float blue[])
+{
+    uniform int taskCount = (height + DECODE_SPAN - 1) / DECODE_SPAN;
+    launch[taskCount] decode_task(width, height, src, red, green, blue);
 }
 
 inline float interpolate(
