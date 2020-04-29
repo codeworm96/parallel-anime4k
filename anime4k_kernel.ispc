@@ -255,13 +255,18 @@ export void thin_lines(
         src_lum, dst_red, dst_green, dst_blue, dst_lum);
 }
 
-export void compute_gradient(
+#define GRADIENT_SPAN 64
+
+task void compute_gradient_task(
     uniform unsigned int width, uniform unsigned int height,
     uniform float src[], uniform float dst[])
 {
     uniform unsigned int new_width = width + 2;
+    uniform unsigned int ibegin = taskIndex * GRADIENT_SPAN + 1;
+    uniform unsigned int iend =
+        min(taskIndex * GRADIENT_SPAN + GRADIENT_SPAN, height);
 
-    for (uniform unsigned int i = 1; i <= height; i++) {
+    for (uniform unsigned int i = ibegin; i <= iend; i++) {
         foreach (j = 1 ... width + 1) {
             /*
              * [tl  t tr]
@@ -305,6 +310,14 @@ export void compute_gradient(
                 1.0f - clamp(sqrt(xgrad * xgrad + ygrad * ygrad), 0.0f, 1.0f);
         }
     }
+}
+
+export void compute_gradient(
+    uniform unsigned int width, uniform unsigned int height,
+    uniform float src[], uniform float dst[])
+{
+    uniform int taskCount = (height + GRADIENT_SPAN - 1) / GRADIENT_SPAN;
+    launch[taskCount] compute_gradient_task(width, height, src, dst);
 }
 
 inline int quantize(float x)
