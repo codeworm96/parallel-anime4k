@@ -45,13 +45,19 @@ inline float interpolate(
     return l * (1 - g) + r * g;
 }
 
-export void linear_upscale(
+#define LINEAR_SPAN 1
+
+task void linear_upscale_task(
     uniform int old_width, uniform int old_height,
     uniform float src_red[], uniform float src_green[], uniform float src_blue[],
     uniform int width, uniform int height,
     uniform float dst_red[], uniform float dst_green[], uniform float dst_blue[], uniform float lum[])
 {
-    for (uniform int i = 0; i < height; i++) {
+    uniform unsigned int ibegin = taskIndex * LINEAR_SPAN;
+    uniform unsigned int iend =
+        min(taskIndex * LINEAR_SPAN + LINEAR_SPAN, (unsigned int)height);
+
+    for (uniform int i = ibegin; i < iend; i++) {
         foreach(j = 0 ... width) {
             float x = (float)(i * old_height) / height;
             float y = (float)((int)j * old_width) / width;
@@ -86,6 +92,17 @@ export void linear_upscale(
             dst_blue[ix] = blue;
         }
     }
+}
+
+export void linear_upscale(
+    uniform int old_width, uniform int old_height,
+    uniform float src_red[], uniform float src_green[], uniform float src_blue[],
+    uniform int width, uniform int height,
+    uniform float dst_red[], uniform float dst_green[], uniform float dst_blue[], uniform float lum[])
+{
+    uniform int taskCount = (height + LINEAR_SPAN - 1) / LINEAR_SPAN;
+    launch[taskCount] linear_upscale_task(old_width, old_height, src_red, src_green, src_blue,
+        width, height, dst_red, dst_green, dst_blue, lum);
 }
 
 inline void get_largest(uniform float strength,
