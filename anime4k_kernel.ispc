@@ -124,7 +124,9 @@ inline void get_largest(uniform float strength,
     }
 }
 
-export void thin_lines(
+#define THINLINES_SPAN 1
+
+task void thin_lines_task(
     uniform float strength, uniform unsigned int width, uniform unsigned int height,
     uniform float image_red[], uniform float image_green[], uniform float image_blue[],
     uniform float src_lum[],
@@ -132,8 +134,11 @@ export void thin_lines(
     uniform float dst_lum[])
 {
     uniform unsigned int new_width = width + 2;
+    uniform unsigned int ibegin = taskIndex * THINLINES_SPAN + 1;
+    uniform unsigned int iend =
+        min(taskIndex * THINLINES_SPAN + THINLINES_SPAN, height);
 
-    for (uniform unsigned int i = 1; i <= height; i++) {
+    for (uniform unsigned int i = ibegin; i <= iend; i++) {
         foreach (j = 1 ... width + 1) {
             /*
              * [tl  t tr]
@@ -236,6 +241,18 @@ export void thin_lines(
             dst_blue[cc_ix] = color[2];
         }
     }
+}
+
+export void thin_lines(
+    uniform float strength, uniform unsigned int width, uniform unsigned int height,
+    uniform float image_red[], uniform float image_green[], uniform float image_blue[],
+    uniform float src_lum[],
+    uniform float dst_red[], uniform float dst_green[], uniform float dst_blue[],
+    uniform float dst_lum[])
+{
+    uniform int taskCount = (height + THINLINES_SPAN - 1) / THINLINES_SPAN;
+    launch[taskCount] thin_lines_task(strength, width, height, image_red, image_green, image_blue,
+        src_lum, dst_red, dst_green, dst_blue, dst_lum);
 }
 
 export void compute_gradient(
