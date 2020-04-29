@@ -180,7 +180,7 @@ export void thin_lines(
             minLight = min3v(l, tl, bl);
             if (minLight > cc && minLight > maxDark) {
                 get_largest(strength, image_red, image_green, image_blue,
-                    src_lum, color,cc_ix, l_ix, tl_ix, bl_ix);
+                    src_lum, color, cc_ix, l_ix, tl_ix, bl_ix);
             }
 
             /* pattern 3 */
