@@ -24,6 +24,8 @@ NVCC=nvcc
 ISPC=ispc
 ISPCFLAGS=-O3 --target=avx2-i32x8 --arch=x86-64 --pic
 
+OMP=-fopenmp -DISPC_USE_OMP
+
 OBJS=$(OBJDIR)/upscale.o $(OBJDIR)/lodepng.o $(OBJDIR)/anime4k_seq.o\
 	$(OBJDIR)/instrument.o $(OBJDIR)/anime4k_ispc.o\
 	$(OBJDIR)/anime4k_kernel_ispc.o $(OBJDIR)/tasksys.o\
@@ -40,7 +42,7 @@ clean:
 		rm -rf $(OBJDIR) *~ $(EXECUTABLE)
 
 $(EXECUTABLE): dirs $(OBJS)
-		$(CXX) $(CXXFLAGS) -pthread -o $@ $(OBJS) $(LDFLAGS) $(LDLIBS) $(LDFRAMEWORKS)
+		$(CXX) $(CXXFLAGS) $(OMP) -o $@ $(OBJS) $(LDFLAGS) $(LDLIBS) $(LDFRAMEWORKS)
 
 $(OBJDIR)/%.o: %.cpp
 		$(CXX) $< $(CXXFLAGS) -c -o $@
@@ -51,7 +53,7 @@ $(OBJDIR)/%.o: %.cu
 $(OBJDIR)/anime4k_ispc.o: $(OBJDIR)/anime4k_kernel_ispc.h
 
 $(OBJDIR)/tasksys.o: tasksys.cpp
-		$(CXX) $< $(CXXFLAGS) -pthread -c -o $@
+		$(CXX) $< $(CXXFLAGS) $(OMP) -c -o $@
 
 $(OBJDIR)/%_ispc.h $(OBJDIR)/%_ispc.o: %.ispc
 		$(ISPC) $(ISPCFLAGS) $< -o $(OBJDIR)/$*_ispc.o -h $(OBJDIR)/$*_ispc.h
