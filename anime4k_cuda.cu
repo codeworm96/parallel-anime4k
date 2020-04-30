@@ -40,8 +40,8 @@ Anime4kCuda::Anime4kCuda(
     param.dst_height = new_height;
     param.src_bytes = 4*width*height*sizeof(unsigned char);
     param.dst_bytes = 4*new_width*new_height*sizeof(unsigned char);
-    param.strength_preprocessing = min((float)new_width / width / 6.0, 1.0);
-    param.strength_push = min((float)new_width / width / 2.0, 1.0);
+    param.strength_preprocessing = min((float)new_width / width / 6.0f, 1.0f);
+    param.strength_push = min((float)new_width / width / 2.0f, 1.0f);
     image_ = image;
     result_ = new unsigned char[param.dst_bytes];
 
@@ -74,9 +74,9 @@ __device__ __inline__ float
 interpolate(unsigned char tl, unsigned char tr,
     unsigned char bl, unsigned char br, float f, float g)
 {
-    float t = ((float)tl/255.0)*(1.0-f)+((float)tr/255.0)*f;
-    float b = ((float)bl/255.0)*(1.0-f)+((float)br/255.0)*f;
-    return t*(1.0-g)+b*g;
+    float t = ((float)tl/255.0f)*(1.0f-f)+((float)tr/255.0f)*f;
+    float b = ((float)bl/255.0f)*(1.0f-f)+((float)br/255.0f)*f;
+    return t*(1.0f-g)+b*g;
 }
 
 __device__ void
@@ -124,7 +124,7 @@ compute_luminance(float *image, float *luminace, bool qualified)
     if (qualified) {
         int threadId = threadIdx.y*blockDim.x+threadIdx.x;
         luminace[threadId] = (image[3*threadId]*2+image[3*threadId+1]*3 
-                                + image[3*threadId]) / 6.0;
+                                + image[3*threadId]) / 6.0f;
     }
     __syncthreads();
 }
@@ -314,7 +314,7 @@ compute_graident(float *lum, float *gradient, bool qualified)
         float ygrad = bl - tl + b + b - t - t + br - tr;
     
         gradient[cc_ix] =
-            1.0 - clamp(sqrt(xgrad * xgrad + ygrad * ygrad), 0.0, 1.0);
+            1.0f - clamp(sqrt(xgrad * xgrad + ygrad * ygrad), 0.0f, 1.0f);
     }
     __syncthreads();
 }
@@ -324,12 +324,12 @@ __device__ __inline__ void
 get_average(float strength, float *image, float color[3],
     int cc, int a, int b, int c)
 {   
-    color[0] = image[cc * 3] * (1.0 - strength) +
-        ((image[a * 3] + image[b * 3] + image[c * 3]) / 3.0) * strength;
-    color[1] = image[cc * 3 + 1] * (1.0 - strength) +
-        ((image[a * 3 + 1] + image[b * 3 + 1] + image[c * 3 + 1]) / 3.0) * strength;
-    color[2] = image[cc * 3 + 2] * (1.0 - strength) +
-        ((image[a * 3 + 2] + image[b * 3 + 2] + image[c * 3 + 2]) / 3.0) * strength;
+    color[0] = image[cc * 3] * (1.0f - strength) +
+        ((image[a * 3] + image[b * 3] + image[c * 3]) / 3.0f) * strength;
+    color[1] = image[cc * 3 + 1] * (1.0f - strength) +
+        ((image[a * 3 + 1] + image[b * 3 + 1] + image[c * 3 + 1]) / 3.0f) * strength;
+    color[2] = image[cc * 3 + 2] * (1.0f - strength) +
+        ((image[a * 3 + 2] + image[b * 3 + 2] + image[c * 3 + 2]) / 3.0f) * strength;
 }
 
 
