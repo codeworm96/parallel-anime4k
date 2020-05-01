@@ -68,7 +68,7 @@ interpolate(unsigned char tl, unsigned char tr,
     return t*minusg+b*g;
 }
 
-__device__ void
+__device__ __inline__ void
 enlarge(unsigned char *image, float *enlarged, bool qualified)
 {
     int threadId = threadIdx.y*blockDim.x+threadIdx.x;
@@ -103,11 +103,10 @@ enlarge(unsigned char *image, float *enlarged, bool qualified)
         enlarged[3*threadId+1] = interpolate(image[tl+1],image[tr+1],image[bl+1],image[br+1],f,g);
         enlarged[3*threadId+2] = interpolate(image[tl+2],image[tr+2],image[bl+2],image[br+2],f,g);
     }
-    __syncthreads();
 }
 
 
-__device__ void
+__device__ __inline__ void
 compute_luminance(float *image, float *luminace, bool qualified) 
 {
     if (qualified) {
@@ -115,34 +114,32 @@ compute_luminance(float *image, float *luminace, bool qualified)
         luminace[threadId] = (image[3*threadId]*2+image[3*threadId+1]*3 
                                 + image[3*threadId]) / 6.0f;
     }
-    __syncthreads();
 }
 
 __device__ __inline__ float 
 min3v(float a, float b, float c) {
-    float tmp = a<b?a:b;
-    return tmp<c?tmp:c;
+    return min(a,min(b,c));
 }
 
 __device__ __inline__ float 
 max3v(float a, float b, float c) {
-    float tmp = a>b?a:b;
-    return tmp>c?tmp:c;
+    return max(a,max(b,c));
 }
 
 __device__ __inline__ void 
 get_largest(float strength, float *image, float *lum,
     float color[4], int cc, int a, int b, int c)
 {
-    float new_lum = lum[cc] * (1 - strength) +
+    float minusStrength = 1 - strength;
+    float new_lum = lum[cc] * minusStrength +
         ((lum[a] + lum[b] + lum[c]) / 3) * strength;
     
     if (new_lum > color[3]) {
-        color[0] = image[cc * 3] * (1 - strength) +
+        color[0] = image[cc * 3] * minusStrength +
             ((image[a * 3] + image[b * 3] + image[c * 3]) / 3) * strength;
-        color[1] = image[cc * 3 + 1] * (1 - strength) +
+        color[1] = image[cc * 3 + 1] * minusStrength +
             ((image[a * 3 + 1] + image[b * 3 + 1] + image[c * 3 + 1]) / 3) * strength;
-        color[2] = image[cc * 3 + 2] * (1 - strength) +
+        color[2] = image[cc * 3 + 2] * minusStrength +
             ((image[a * 3 + 2] + image[b * 3 + 2] + image[c * 3 + 2]) / 3) * strength;
         color[3] = new_lum;
     }
@@ -239,14 +236,13 @@ preprocess(float *image, float *lum, float *preprocessed, bool qualified)
         preprocessed[3 * threadId + 1] = color[1];
         preprocessed[3 * threadId + 2] = color[2];
     }
-    __syncthreads();
 }
 
 
 __device__ __inline__ float 
 clamp(float x, float lower, float upper)
 {
-    return x < lower ? lower : (x > upper ? upper : x);
+    return min(upper,max(x,lower));
 }
 
 __device__ __inline__ void
@@ -294,7 +290,6 @@ compute_graident(float *lum, float *gradient, bool qualified)
         gradient[cc_ix] =
             1.0f - clamp(sqrt(xgrad * xgrad + ygrad * ygrad), 0.0f, 1.0f);
     }
-    __syncthreads();
 }
 
 
@@ -311,7 +306,7 @@ get_average(float strength, float *image, float color[3],
 }
 
 
-__device__ void
+__device__ __inline__ void
 push(float *image, float *gradient, float *pushed, bool qualified)
 {
     int threadId = threadIdx.y*blockDim.x+threadIdx.x;
@@ -390,17 +385,16 @@ push(float *image, float *gradient, float *pushed, bool qualified)
         pushed[3 * threadId + 1] = color[1];
         pushed[3 * threadId + 2] = color[2];
     }
-    __syncthreads();
 }
 
 __device__ __inline__ unsigned char
 quantize(float x) 
 {
     int r = x * 255;
-    return r < 0 ? 0 : (r > 255 ? 255 : r);
+    return min(255,max(r,0));
 }
 
-__device__ void
+__device__ __inline__ void
 output(float *image, unsigned char *dst, bool qualified)
 {
     int threadId = threadIdx.y*blockDim.x+threadIdx.x;
@@ -420,7 +414,6 @@ output(float *image, unsigned char *dst, bool qualified)
         // dst[4*pixelId+2] = quantize(image[threadId]);
         // dst[4*pixelId+3] = 255;
     }
-    __syncthreads();
 }
 
 __global__ void
@@ -458,9 +451,12 @@ kernel(unsigned char *src, unsigned char *dst)
     
     enlarge(src,image, inside_image_padded);
     compute_luminance(image, luminace, inside_image_padded);
+    __syncthreads();
     preprocess(image,luminace,preprocessed, inside_image_padded && inside_thread_onepadded);
     compute_luminance(preprocessed, luminace, inside_image_padded);
+    __syncthreads();
     compute_graident(luminace, gradient, inside_image_padded && inside_thread_onepadded);
+    __syncthreads();
     push(preprocessed, gradient, image, inside_image_nopaded && inside_thread_nopadded);
     output(image, dst, inside_image_nopaded && inside_thread_nopadded);
 }
