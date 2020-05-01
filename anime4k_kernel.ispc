@@ -6,53 +6,35 @@ inline float max3v(float a, float b, float c) {
     return max(max(a, b), c);
 }
 
-#define DECODE_SPAN 1
-
-task void decode_task(
-    uniform unsigned int width, uniform unsigned int height, uniform int src[],
-    uniform float red[], uniform float green[], uniform float blue[])
+inline float<3> decode(uniform int src[], int ix)
 {
-    uniform unsigned int ibegin = taskIndex * DECODE_SPAN;
-    uniform unsigned int iend =
-        min(taskIndex * DECODE_SPAN + DECODE_SPAN, height);
-
-    for (uniform unsigned int i = ibegin; i < iend; i++) {
-        foreach (j = 0 ... width) {
-            int old_ix = i * width + j;
-            int new_ix = (i + 1) * (width + 2) + j + 1;
-            int rgba = src[old_ix];
-            red[new_ix] = (rgba & 0xFF) / 255.0f;
-            green[new_ix] = ((rgba >> 8) & 0xFF) / 255.0f;
-            blue[new_ix] = ((rgba >> 16) & 0xFF) / 255.0f;
-        }
-    }
+    float<3> res;
+    int rgba = src[ix];
+    res.r = (rgba & 0xFF) / 255.0f;
+    res.g = ((rgba >> 8) & 0xFF) / 255.0f;
+    res.b = ((rgba >> 16) & 0xFF) / 255.0f;
+    return res;
 }
 
-export void decode(
-    uniform unsigned int width, uniform unsigned int height, uniform int src[],
-    uniform float red[], uniform float green[], uniform float blue[])
+inline float<3> interpolate(
+    float<3> tl, float<3> tr,
+    float<3> bl, float<3> br, float f, float g)
 {
-    uniform int taskCount = (height + DECODE_SPAN - 1) / DECODE_SPAN;
-    launch[taskCount] decode_task(width, height, src, red, green, blue);
-}
-
-inline float interpolate(
-    float tl, float tr,
-    float bl, float br, float f, float g)
-{
-    float l = tl * (1 - f) + bl * f;
-    float r = tr * (1 - f) + br * f;
+    float<3> l = tl * (1 - f) + bl * f;
+    float<3> r = tr * (1 - f) + br * f;
     return l * (1 - g) + r * g;
 }
 
 #define LINEAR_SPAN 1
 
 task void linear_upscale_task(
-    uniform int old_width, uniform int old_height,
-    uniform float src_red[], uniform float src_green[], uniform float src_blue[],
+    uniform int old_width, uniform int old_height, uniform int src[],
     uniform int width, uniform int height,
     uniform float dst_red[], uniform float dst_green[], uniform float dst_blue[], uniform float lum[])
 {
+    uniform unsigned int new_width = width + 2;
+    uniform int maxh = old_height - 1;
+    uniform int maxw = old_width - 1;
     uniform unsigned int ibegin = taskIndex * LINEAR_SPAN;
     uniform unsigned int iend =
         min(taskIndex * LINEAR_SPAN + LINEAR_SPAN, (unsigned int)height);
@@ -63,45 +45,38 @@ task void linear_upscale_task(
             float y = (float)((int)j * old_width) / width;
             float floor_x = floor(x);
             float floor_y = floor(y);
-            int h = (int)floor_x + 1;
-            int w = (int)floor_y + 1;
+            int ht = (int)floor_x;
+            int hb = min(ht + 1, maxh);
+            int wl = (int)floor_y;
+            int wr = min(wl + 1, maxw);
             float f = x - floor_x;
             float g = y - floor_y;
 
-            int ix = (i + 1) * (width + 2) + j + 1;
-            int tl = h * (old_width + 2) + w;
-            int tr = tl + 1;
-            int bl = tl + old_width + 2;
-            int br = bl + 1;
+            int ix = (i + 1) * new_width + j + 1;
+            int tl = ht * old_width + wl;
+            int tr = ht * old_width + wr;
+            int bl = hb * old_width + wl;
+            int br = hb * old_width + wr;
 
-            float red = interpolate(
-                src_red[tl], src_red[tr],
-                src_red[bl], src_red[br], f, g);
+            float<3> color = interpolate(
+                decode(src, tl), decode(src, tr),
+                decode(src, bl), decode(src, br), f, g);
 
-            float green = interpolate(
-                src_green[tl], src_green[tr],
-                src_green[bl], src_green[br], f, g);
-
-            float blue = interpolate(
-                src_blue[tl], src_blue[tr],
-                src_blue[bl], src_blue[br], f, g);
-
-            lum[ix] = (red * 2 + green * 3 + blue) / 6;
-            dst_red[ix] = red;
-            dst_green[ix] = green;
-            dst_blue[ix] = blue;
+            lum[ix] = (color.r * 2 + color.g * 3 + color.b) / 6;
+            dst_red[ix] = color.r;
+            dst_green[ix] = color.g;
+            dst_blue[ix] = color.b;
         }
     }
 }
 
 export void linear_upscale(
-    uniform int old_width, uniform int old_height,
-    uniform float src_red[], uniform float src_green[], uniform float src_blue[],
+    uniform int old_width, uniform int old_height, uniform int src[],
     uniform int width, uniform int height,
     uniform float dst_red[], uniform float dst_green[], uniform float dst_blue[], uniform float lum[])
 {
     uniform int taskCount = (height + LINEAR_SPAN - 1) / LINEAR_SPAN;
-    launch[taskCount] linear_upscale_task(old_width, old_height, src_red, src_green, src_blue,
+    launch[taskCount] linear_upscale_task(old_width, old_height, src,
         width, height, dst_red, dst_green, dst_blue, lum);
 }
 

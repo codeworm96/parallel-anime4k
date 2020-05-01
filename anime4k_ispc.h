@@ -10,9 +10,6 @@ private:
     unsigned char *image_;
     unsigned int width_;
     unsigned int height_;
-    float *original_red_;
-    float *original_green_;
-    float *original_blue_;
     float *enlarge_red_;
     float *enlarge_green_;
     float *enlarge_blue_;
