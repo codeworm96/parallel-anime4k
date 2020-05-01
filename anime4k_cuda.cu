@@ -13,22 +13,10 @@
 #define THREADW (REGIONW+2*PADDING)
 #define THREADH (REGIONH+2*PADDING)
 
-#define cudaCheckError(ans)  cudaAssert((ans), __FILE__, __LINE__);
-inline void cudaAssert(cudaError_t code, const char *file, int line, bool abort=true)
-{
-   if (code != cudaSuccess)
-   {
-      fprintf(stderr, "CUDA Error: %s at %s:%d\n",
-        cudaGetErrorString(code), file, line);
-        if (abort) exit(code);
-    }
- }
-
 __constant__ Param cudaParam;
 unsigned char *cudaImage;
 unsigned char *cudaResult;
 __global__ void kernel(unsigned char *src, unsigned char *dst);
-
 
 Anime4kCuda::Anime4kCuda(
     unsigned int width, unsigned int height, unsigned char *image,
@@ -58,7 +46,6 @@ void Anime4kCuda::run()
     cudaMemcpy(cudaImage, image_, param.src_bytes,cudaMemcpyHostToDevice);
     kernel<<<gridDim,blockDim>>>(cudaImage,cudaResult);
     cudaMemcpy(result_, cudaResult, param.dst_bytes,cudaMemcpyDeviceToHost);
-
 }
 
 Anime4kCuda::~Anime4kCuda()
@@ -74,9 +61,11 @@ __device__ __inline__ float
 interpolate(unsigned char tl, unsigned char tr,
     unsigned char bl, unsigned char br, float f, float g)
 {
-    float t = ((float)tl/255.0f)*(1.0f-f)+((float)tr/255.0f)*f;
-    float b = ((float)bl/255.0f)*(1.0f-f)+((float)br/255.0f)*f;
-    return t*(1.0f-g)+b*g;
+    float minusf = 1.0f-f;
+    float minusg = 1.0f-g;
+    float t = ((float)tl*minusf+(float)tr*f)/255.0f;
+    float b = ((float)bl*minusf+(float)br*f)/255.0f;
+    return t*minusg+b*g;
 }
 
 __device__ void
@@ -109,7 +98,7 @@ enlarge(unsigned char *image, float *enlarged, bool qualified)
         int tr = tl + 4;
         int bl = tl + 4*src_width;
         int br = bl + 4;
-    
+        
         enlarged[3*threadId] = interpolate(image[tl],image[tr],image[bl],image[br],f,g);
         enlarged[3*threadId+1] = interpolate(image[tl+1],image[tr+1],image[bl+1],image[br+1],f,g);
         enlarged[3*threadId+2] = interpolate(image[tl+2],image[tr+2],image[bl+2],image[br+2],f,g);
@@ -131,12 +120,14 @@ compute_luminance(float *image, float *luminace, bool qualified)
 
 __device__ __inline__ float 
 min3v(float a, float b, float c) {
-    return min(min(a, b), c);
+    float tmp = a<b?a:b;
+    return tmp<c?tmp:c;
 }
 
 __device__ __inline__ float 
 max3v(float a, float b, float c) {
-    return max(max(a, b), c);
+    float tmp = a>b?a:b;
+    return tmp>c?tmp:c;
 }
 
 __device__ __inline__ void 
@@ -193,69 +184,56 @@ preprocess(float *image, float *lum, float *preprocessed, bool qualified)
         float bl = lum[bl_ix];
         float br = lum[br_ix];
 
-        /* pattern 0 and 4 */
-        float maxDark = max3v(br, b, bl);
-        float minLight = min3v(tl, t, tr);
+        float max0 = max3v(br, b, bl);
+        float min0 = min3v(tl, t, tr);
+        float max1 = max3v(tl, t, tr);
+        float min1 = min3v(br, b, bl);
+        float max2 = max3v(cc, l, b);
+        float min2 = min3v(r, t, tr);
+        float max3 = max3v(cc, r, t);
+        float min3 = min3v(bl, l, b);
+        float max4 = max3v(l, tl, bl);
+        float min4 = min3v(r, br, tr);
+        float max5 = max3v(r, br, tr);
+        float min5 = min3v(l, tl, bl);
+        float max6 = max3v(cc, l, t);
+        float min6 = min3v(r, br, b);
+        float max7 = max3v(cc, r, b);
+        float min7 = min3v(t, l, tl);
 
-        if (minLight > cc && minLight > maxDark) {
+
+        if (min0 > cc && min0 > max1) {
             get_largest(strength, image, lum, color,
                 cc_ix, tl_ix, t_ix, tr_ix);
-        } else {
-            maxDark = max3v(tl, t, tr);
-            minLight = min3v(br, b, bl);
-            if (minLight > cc && minLight > maxDark) {
-                get_largest(strength, image, lum, color,
-                    cc_ix, br_ix, b_ix, bl_ix);
-            }
+        } else if (min1 > cc && min1 > max1) {
+            get_largest(strength, image, lum, color,
+                cc_ix, br_ix, b_ix, bl_ix);
         }
 
-        /* pattern 1 and 5 */
-        maxDark = max3v(cc, l, b);
-        minLight = min3v(r, t, tr);
-
-        if (minLight > maxDark) {
+        if (min2 > max2) {
             get_largest(strength, image, lum, color,
                 cc_ix, r_ix, t_ix, tr_ix);
-        } else {
-            maxDark = max3v(cc, r, t);
-            minLight = min3v(bl, l, b);
-            if (minLight > maxDark) {
-                get_largest(strength, image, lum, color,
-                    cc_ix, bl_ix, l_ix, b_ix);
-            }
+        } else if (min3 > max3) {
+            get_largest(strength, image, lum, color,
+                cc_ix, bl_ix, l_ix, b_ix);
         }
 
-        /* pattern 2 and 6 */
-        maxDark = max3v(l, tl, bl);
-        minLight = min3v(r, br, tr);
-
-        if (minLight > cc && minLight > maxDark) {
+        if (min4 > cc && min4 > max4) {
             get_largest(strength, image, lum, color,
                 cc_ix, r_ix, br_ix, tr_ix);
-        } else {
-            maxDark = max3v(r, br, tr);
-            minLight = min3v(l, tl, bl);
-            if (minLight > cc && minLight > maxDark) {
-                get_largest(strength, image, lum, color,
-                    cc_ix, l_ix, tl_ix, bl_ix);
-            }
+        } else if (min5 > cc && min5 > max5) {
+            get_largest(strength, image, lum, color,
+                cc_ix, l_ix, tl_ix, bl_ix);
         }
 
-        /* pattern 3 and 7 */
-        maxDark = max3v(cc, l, t);
-        minLight = min3v(r, br, b);
-
-        if (minLight > maxDark) {
+        if (min6 > max6) {
             get_largest(strength, image, lum, color,
                 cc_ix, r_ix, br_ix, b_ix);
-        } else {
-            maxDark = max3v(cc, r, b);
-            minLight = min3v(t, l, tl);
-            if (minLight > maxDark) {
-                get_largest(strength, image, lum, color,
-                    cc_ix, t_ix, l_ix, tl_ix);
-            }
+        } else if (min7 > max7) {
+            get_largest(strength, image, lum, color,
+                cc_ix, t_ix, l_ix, tl_ix);
         }
+
 
         preprocessed[3 * threadId] = color[0];
         preprocessed[3 * threadId + 1] = color[1];
@@ -365,28 +343,45 @@ push(float *image, float *gradient, float *pushed, bool qualified)
         float bl = gradient[bl_ix];
         float br = gradient[br_ix];
 
-        if (min3v(tl, t, tr) > cc && min3v(tl, t, tr) > max3v(br, b, bl)) {
+        float max0 = max3v(br, b, bl);
+        float min0 = min3v(tl, t, tr);
+        float max1 = max3v(tl, t, tr);
+        float min1 = min3v(br, b, bl);
+        float max2 = max3v(cc, l, b);
+        float min2 = min3v(r, t, tr);
+        float max3 = max3v(cc, r, t);
+        float min3 = min3v(bl, l, b);
+        float max4 = max3v(l, tl, bl);
+        float min4 = min3v(r, br, tr);
+        float max5 = max3v(r, br, tr);
+        float min5 = min3v(l, tl, bl);
+        float max6 = max3v(cc, l, t);
+        float min6 = min3v(r, br, b);
+        float max7 = max3v(cc, r, b);
+        float min7 = min3v(t, l, tl);
+
+        if ( min0 > cc && min0 > max0) {
             get_average(strength, image, color,
                 cc_ix, tl_ix, t_ix, tr_ix);
-        } else if (min3v(br, b, bl) > cc && min3v(br, b, bl) > max3v(tl, t, tr)) {
+        } else if (min1 > cc &&  min1 > max1) {
             get_average(strength, image, color,
                 cc_ix, br_ix, b_ix, bl_ix);
-        } else if (min3v(r, t, tr) > max3v(cc, l, b)) {
+        } else if (min2 > max2) {
             get_average(strength, image, color,
                 cc_ix, r_ix, t_ix, tr_ix);
-        } else if (min3v(bl, l, b) > max3v(cc, r, t)) {
+        } else if (min3 > max3) {
             get_average(strength, image, color,
                 cc_ix, bl_ix, l_ix, b_ix);
-        } else if (min3v(r, br, tr) > cc && min3v(r, br, tr) > max3v(l, tl, bl)) {
+        } else if (min4 > cc && min4 > max4) {
             get_average(strength, image, color,
                 cc_ix, r_ix, br_ix, tr_ix);
-        } else if (min3v(l, tl, bl) > cc && min3v(l, tl, bl) > max3v(r, br, tr)) {
+        } else if (min5 > cc && min5 > max5) {
             get_average(strength, image, color,
                 cc_ix, l_ix, tl_ix, bl_ix);    
-        } else if (min3v(r, br, b) > max3v(cc, l, t)) {
+        } else if (min6 > max6) {
             get_average(strength, image, color,
                 cc_ix, r_ix, br_ix, b_ix);
-        } else if (min3v(t, l, tl) > max3v(cc, r, b)) {
+        } else if (min7 > max7) {
             get_average(strength, image, color,
                 cc_ix, t_ix, l_ix, tl_ix);
         }
@@ -464,7 +459,7 @@ kernel(unsigned char *src, unsigned char *dst)
     enlarge(src,image, inside_image_padded);
     compute_luminance(image, luminace, inside_image_padded);
     preprocess(image,luminace,preprocessed, inside_image_padded && inside_thread_onepadded);
-    compute_luminance(image, luminace, inside_image_padded);
+    compute_luminance(preprocessed, luminace, inside_image_padded);
     compute_graident(luminace, gradient, inside_image_padded && inside_thread_onepadded);
     push(preprocessed, gradient, image, inside_image_nopaded && inside_thread_nopadded);
     output(image, dst, inside_image_nopaded && inside_thread_nopadded);
