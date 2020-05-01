@@ -105,23 +105,22 @@ export void linear_upscale(
         width, height, dst_red, dst_green, dst_blue, lum);
 }
 
-inline void get_largest(uniform float strength,
-    uniform float red[], uniform float green[], uniform float blue[],
-    uniform float lum[],
-    float color[4], int cc, int a, int b, int c)
+inline float<4> get_largest(uniform float strength,
+    float<4> color, float<4> cc, float<4> a, float<4> b, float<4> c)
 {
-    float new_lum = lum[cc] * (1 - strength) +
-        ((lum[a] + lum[b] + lum[c]) / 3) * strength;
+    float new_lum = cc.a * (1 - strength) + ((a.a + b.a + c.a) / 3) * strength;
+    float<4> res;
     
-    if (new_lum > color[3]) {
-        color[0] = red[cc] * (1 - strength) +
-            ((red[a] + red[b] + red[c]) / 3) * strength;
-        color[1] = green[cc] * (1 - strength) +
-            ((green[a] + green[b] + green[c]) / 3) * strength;
-        color[2] = blue[cc] * (1 - strength) +
-            ((blue[a] + blue[b] + blue[c]) / 3) * strength;
-        color[3] = new_lum;
+    if (new_lum > color.a) {
+        res.r = cc.r * (1 - strength) + ((a.r + b.r + c.r) / 3) * strength;
+        res.g = cc.g * (1 - strength) + ((a.g + b.g + c.g) / 3) * strength;
+        res.b = cc.b * (1 - strength) + ((a.b + b.b + c.b) / 3) * strength;
+        res.a = new_lum;
+    } else {
+        res = color;
     }
+
+    return res;
 }
 
 #define THINLINES_SPAN 1
@@ -155,90 +154,87 @@ task void thin_lines_task(
             int bl_ix = b_ix - 1;
             int br_ix = b_ix + 1;
 
-            float cc = src_lum[cc_ix];
-            float r = src_lum[r_ix];
-            float l = src_lum[l_ix];
-            float t = src_lum[t_ix];
-            float tl = src_lum[tl_ix];
-            float tr = src_lum[tr_ix];
-            float b = src_lum[b_ix];
-            float bl = src_lum[bl_ix];
-            float br = src_lum[br_ix];
+            float<4> cc = { image_red[cc_ix], image_green[cc_ix],
+                image_blue[cc_ix], src_lum[cc_ix] };
+            float<4> r = { image_red[r_ix], image_green[r_ix],
+                image_blue[r_ix], src_lum[r_ix] };
+            float<4> l = { image_red[l_ix], image_green[l_ix],
+                image_blue[l_ix], src_lum[l_ix] };
+            float<4> t = { image_red[t_ix], image_green[t_ix],
+                image_blue[t_ix], src_lum[t_ix] };
+            float<4> tl = { image_red[tl_ix], image_green[tl_ix],
+                image_blue[tl_ix], src_lum[tl_ix] };
+            float<4> tr = { image_red[tr_ix], image_green[tr_ix],
+                image_blue[tr_ix], src_lum[tr_ix] };
+            float<4> b = { image_red[b_ix], image_green[b_ix],
+                image_blue[b_ix], src_lum[b_ix] };
+            float<4> bl = { image_red[bl_ix], image_green[bl_ix],
+                image_blue[bl_ix], src_lum[bl_ix] };
+            float<4> br = { image_red[br_ix], image_green[br_ix],
+                image_blue[br_ix], src_lum[br_ix] };
 
-            float color[4];
-            color[0] = image_red[cc_ix];
-            color[1] = image_green[cc_ix];
-            color[2] = image_blue[cc_ix];
-            color[3] = cc;
+            float<4> color = cc;
 
             /* pattern 0 */
-            float maxDark = max3v(br, b, bl);
-            float minLight = min3v(tl, t, tr);
-            if (minLight > cc && minLight > maxDark) {
-                get_largest(strength, image_red, image_green, image_blue,
-                    src_lum, color, cc_ix, tl_ix, t_ix, tr_ix);
+            float maxDark = max3v(br.a, b.a, bl.a);
+            float minLight = min3v(tl.a, t.a, tr.a);
+            if (minLight > cc.a && minLight > maxDark) {
+                color = get_largest(strength, color, cc, tl, t, tr);
             }
 
             /* pattern 4 */
-            maxDark = max3v(tl, t, tr);
-            minLight = min3v(br, b, bl);
-            if (minLight > cc && minLight > maxDark) {
-                get_largest(strength, image_red, image_green, image_blue,
-                    src_lum, color, cc_ix, br_ix, b_ix, bl_ix);
+            maxDark = max3v(tl.a, t.a, tr.a);
+            minLight = min3v(br.a, b.a, bl.a);
+            if (minLight > cc.a && minLight > maxDark) {
+                color = get_largest(strength, color, cc, br, b, bl);
             }
 
             /* pattern 1 */
-            maxDark = max3v(cc, l, b);
-            minLight = min3v(r, t, tr);
+            maxDark = max3v(cc.a, l.a, b.a);
+            minLight = min3v(r.a, t.a, tr.a);
             if (minLight > maxDark) {
-                get_largest(strength, image_red, image_green, image_blue,
-                    src_lum, color, cc_ix, r_ix, t_ix, tr_ix);
+                color = get_largest(strength, color, cc, r, t, tr);
             }
 
             /* pattern 5 */
-            maxDark = max3v(cc, r, t);
-            minLight = min3v(bl, l, b);
+            maxDark = max3v(cc.a, r.a, t.a);
+            minLight = min3v(bl.a, l.a, b.a);
             if (minLight > maxDark) {
-                get_largest(strength, image_red, image_green, image_blue,
-                    src_lum, color, cc_ix, bl_ix, l_ix, b_ix);
+                color = get_largest(strength, color, cc, bl, l, b);
             }
 
             /* pattern 2 */
-            maxDark = max3v(l, tl, bl);
-            minLight = min3v(r, br, tr);
-            if (minLight > cc && minLight > maxDark) {
-                get_largest(strength, image_red, image_green, image_blue,
-                    src_lum, color, cc_ix, r_ix, br_ix, tr_ix);
+            maxDark = max3v(l.a, tl.a, bl.a);
+            minLight = min3v(r.a, br.a, tr.a);
+            if (minLight > cc.a && minLight > maxDark) {
+                color = get_largest(strength, color, cc, r, br, tr);
             }
 
             /* pattern 6 */
-            maxDark = max3v(r, br, tr);
-            minLight = min3v(l, tl, bl);
-            if (minLight > cc && minLight > maxDark) {
-                get_largest(strength, image_red, image_green, image_blue,
-                    src_lum, color, cc_ix, l_ix, tl_ix, bl_ix);
+            maxDark = max3v(r.a, br.a, tr.a);
+            minLight = min3v(l.a, tl.a, bl.a);
+            if (minLight > cc.a && minLight > maxDark) {
+                color = get_largest(strength, color, cc, l, tl, bl);
             }
 
             /* pattern 3 */
-            maxDark = max3v(cc, l, t);
-            minLight = min3v(r, br, b);
+            maxDark = max3v(cc.a, l.a, t.a);
+            minLight = min3v(r.a, br.a, b.a);
             if (minLight > maxDark) {
-                get_largest(strength, image_red, image_green, image_blue,
-                    src_lum, color, cc_ix, r_ix, br_ix, b_ix);
+                color = get_largest(strength, color, cc, r, br, b);
             }
 
             /* pattern 7 */
-            maxDark = max3v(cc, r, b);
-            minLight = min3v(t, l, tl);
+            maxDark = max3v(cc.a, r.a, b.a);
+            minLight = min3v(t.a, l.a, tl.a);
             if (minLight > maxDark) {
-                get_largest(strength, image_red, image_green, image_blue,
-                    src_lum, color, cc_ix, t_ix, l_ix, tl_ix);
+                color = get_largest(strength, color, cc, t, l, tl);
             }
 
-            dst_lum[cc_ix] = (color[0] * 2 + color[1] * 3 + color[2]) / 6;
-            dst_red[cc_ix] = color[0];
-            dst_green[cc_ix] = color[1];
-            dst_blue[cc_ix] = color[2];
+            dst_lum[cc_ix] = (color.r * 2 + color.g * 3 + color.b) / 6;
+            dst_red[cc_ix] = color.r;
+            dst_green[cc_ix] = color.g;
+            dst_blue[cc_ix] = color.b;
         }
     }
 }
@@ -327,15 +323,11 @@ inline int quantize(float x)
 }
 
 inline int get_average(uniform float strength,
-    uniform float src_red[], uniform float src_green[], uniform float src_blue[],
-    int cc, int a, int b, int c)
+    float<4> cc, float<4> a, float<4> b, float<4> c)
 {
-    float red = src_red[cc] * (1 - strength) +
-        ((src_red[a] + src_red[b] + src_red[c]) / 3) * strength;
-    float green = src_green[cc] * (1 - strength) +
-        ((src_green[a] + src_green[b] + src_green[c]) / 3) * strength;
-    float blue = src_blue[cc] * (1 - strength) +
-        ((src_blue[a] + src_blue[b] + src_blue[c]) / 3) * strength;
+    float red = cc.r * (1 - strength) + ((a.r + b.r + c.r) / 3) * strength;
+    float green = cc.g * (1 - strength) + ((a.g + b.g + c.g) / 3) * strength;
+    float blue = cc.b * (1 - strength) + ((a.b + b.b + c.b) / 3) * strength;
 
     int rgba = 0xFF000000;
     rgba |= quantize(blue) << 16;
@@ -374,97 +366,98 @@ task void refine_task(
             int bl_ix = b_ix - 1;
             int br_ix = b_ix + 1;
 
-            float cc = gradients[cc_ix];
-            float r = gradients[r_ix];
-            float l = gradients[l_ix];
-            float t = gradients[t_ix];
-            float tl = gradients[tl_ix];
-            float tr = gradients[tr_ix];
-            float b = gradients[b_ix];
-            float bl = gradients[bl_ix];
-            float br = gradients[br_ix];
+            float<4> cc = { image_red[cc_ix], image_green[cc_ix],
+                image_blue[cc_ix], gradients[cc_ix] };
+            float<4> r = { image_red[r_ix], image_green[r_ix],
+                image_blue[r_ix], gradients[r_ix] };
+            float<4> l = { image_red[l_ix], image_green[l_ix],
+                image_blue[l_ix], gradients[l_ix] };
+            float<4> t = { image_red[t_ix], image_green[t_ix],
+                image_blue[t_ix], gradients[t_ix] };
+            float<4> tl = { image_red[tl_ix], image_green[tl_ix],
+                image_blue[tl_ix], gradients[tl_ix] };
+            float<4> tr = { image_red[tr_ix], image_green[tr_ix],
+                image_blue[tr_ix], gradients[tr_ix] };
+            float<4> b = { image_red[b_ix], image_green[b_ix],
+                image_blue[b_ix], gradients[b_ix] };
+            float<4> bl = { image_red[bl_ix], image_green[bl_ix],
+                image_blue[bl_ix], gradients[bl_ix] };
+            float<4> br = { image_red[br_ix], image_green[br_ix],
+                image_blue[br_ix], gradients[br_ix] };
 
             bool mask = true;
             int res;
 
             /* pattern 0 */
-            float maxDark = max3v(br, b, bl);
-            float minLight = min3v(tl, t, tr);
-            if (mask && minLight > cc && minLight > maxDark) {
-                res = get_average(strength, image_red, image_green, image_blue,
-                    cc_ix, tl_ix, t_ix, tr_ix);
+            float maxDark = max3v(br.a, b.a, bl.a);
+            float minLight = min3v(tl.a, t.a, tr.a);
+            if (mask && minLight > cc.a && minLight > maxDark) {
+                res = get_average(strength, cc, tl, t, tr);
                 mask = false;
             }
 
             /* pattern 4 */
-            maxDark = max3v(tl, t, tr);
-            minLight = min3v(br, b, bl);
-            if (mask && minLight > cc && minLight > maxDark) {
-                res = get_average(strength, image_red, image_green, image_blue,
-                    cc_ix, br_ix, b_ix, bl_ix);
+            maxDark = max3v(tl.a, t.a, tr.a);
+            minLight = min3v(br.a, b.a, bl.a);
+            if (mask && minLight > cc.a && minLight > maxDark) {
+                res = get_average(strength, cc, br, b, bl);
                 mask = false;
             }
 
             /* pattern 1 */
-            maxDark = max3v(cc, l, b);
-            minLight = min3v(r, t, tr);
+            maxDark = max3v(cc.a, l.a, b.a);
+            minLight = min3v(r.a, t.a, tr.a);
             if (mask && minLight > maxDark) {
-                res = get_average(strength, image_red, image_green, image_blue,
-                    cc_ix, r_ix, t_ix, tr_ix);
+                res = get_average(strength, cc, r, t, tr);
                 mask = false;
             }
 
             /* pattern 5 */
-            maxDark = max3v(cc, r, t);
-            minLight = min3v(bl, l, b);
+            maxDark = max3v(cc.a, r.a, t.a);
+            minLight = min3v(bl.a, l.a, b.a);
             if (mask && minLight > maxDark) {
-                res = get_average(strength, image_red, image_green, image_blue,
-                    cc_ix, bl_ix, l_ix, b_ix);
+                res = get_average(strength, cc, bl, l, b);
                 mask = false;
             }
 
             /* pattern 2 */
-            maxDark = max3v(l, tl, bl);
-            minLight = min3v(r, br, tr);
-            if (mask && minLight > cc && minLight > maxDark) {
-                res = get_average(strength, image_red, image_green, image_blue,
-                    cc_ix, r_ix, br_ix, tr_ix);
+            maxDark = max3v(l.a, tl.a, bl.a);
+            minLight = min3v(r.a, br.a, tr.a);
+            if (mask && minLight > cc.a && minLight > maxDark) {
+                res = get_average(strength, cc, r, br, tr);
                 mask = false;
             }
 
             /* pattern 6 */
-            maxDark = max3v(r, br, tr);
-            minLight = min3v(l, tl, bl);
-            if (mask && minLight > cc && minLight > maxDark) {
-                res = get_average(strength, image_red, image_green, image_blue,
-                    cc_ix, l_ix, tl_ix, bl_ix);
+            maxDark = max3v(r.a, br.a, tr.a);
+            minLight = min3v(l.a, tl.a, bl.a);
+            if (mask && minLight > cc.a && minLight > maxDark) {
+                res = get_average(strength, cc, l, tl, bl);
                 mask = false;
             }
 
             /* pattern 3 */
-            maxDark = max3v(cc, l, t);
-            minLight = min3v(r, br, b);
+            maxDark = max3v(cc.a, l.a, t.a);
+            minLight = min3v(r.a, br.a, b.a);
             if (mask && minLight > maxDark) {
-                res = get_average(strength, image_red, image_green, image_blue,
-                    cc_ix, r_ix, br_ix, b_ix);
+                res = get_average(strength, cc, r, br, b);
                 mask = false;
             }
 
             /* pattern 7 */
-            maxDark = max3v(cc, r, b);
-            minLight = min3v(t, l, tl);
+            maxDark = max3v(cc.a, r.a, b.a);
+            minLight = min3v(t.a, l.a, tl.a);
             if (mask && minLight > maxDark) {
-                res = get_average(strength, image_red, image_green, image_blue,
-                    cc_ix, t_ix, l_ix, tl_ix);
+                res = get_average(strength, cc, t, l, tl);
                 mask = false;
             }
 
             /* fallback */
             if (mask) {
                 int rgba = 0xFF000000;
-                rgba |= quantize(image_blue[cc_ix]) << 16;
-                rgba |= quantize(image_green[cc_ix]) << 8;
-                rgba |= quantize(image_red[cc_ix]);
+                rgba |= quantize(cc.b) << 16;
+                rgba |= quantize(cc.g) << 8;
+                rgba |= quantize(cc.r);
                 res = rgba;
             }
 
