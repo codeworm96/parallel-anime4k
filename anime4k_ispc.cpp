@@ -46,7 +46,7 @@ Anime4kIspc::Anime4kIspc(
         min((float)new_width / width / 2, 1.0f);
 }
 
-static void extend(float *buf, unsigned int width, unsigned int height)
+static inline void extend(float *buf, unsigned int width, unsigned int height)
 {
     unsigned int new_width = width + 2;
 
@@ -71,38 +71,98 @@ static void extend(float *buf, unsigned int width, unsigned int height)
     }
 }
 
-void Anime4kIspc::run()
+static inline void linear_upscale(int old_width, int old_height, int *src,
+    int width, int height,
+    float *dst_red, float *dst_green, float *dst_blue, float *lum)
 {
     START_ACTIVITY(ACTIVITY_LINEAR);
-    ispc::linear_upscale(old_width_, old_height_, (int *)image_,
+
+    #pragma omp parallel for schedule(static)
+    for (int i = 0; i < height; i++) {
+        ispc::linear_upscale_kernel(old_width, old_height, src,
+            width, height, dst_red, dst_green, dst_blue, lum, i);
+    }
+
+    extend(dst_red, width, height);
+    extend(dst_green, width, height);
+    extend(dst_blue, width, height);
+    extend(lum, width, height);
+
+    FINISH_ACTIVITY(ACTIVITY_LINEAR);
+}
+
+static inline void thin_lines(float strength,
+    unsigned int width, unsigned int height,
+    float *image_red, float *image_green, float *image_blue,
+    float *src_lum,
+    float *dst_red, float *dst_green, float *dst_blue,
+    float *dst_lum)
+{
+    START_ACTIVITY(ACTIVITY_THINLINES);
+
+    #pragma omp parallel for schedule(static)
+    for (unsigned int i = 1; i <= height; i++) {
+        ispc::thin_lines_kernel(strength, width, height,
+            image_red, image_green, image_blue, src_lum,
+            dst_red, dst_green, dst_blue, dst_lum, i);
+    }
+
+    extend(dst_red, width, height);
+    extend(dst_green, width, height);
+    extend(dst_blue, width, height);
+    extend(dst_lum, width, height);
+
+    FINISH_ACTIVITY(ACTIVITY_THINLINES);
+}
+
+static inline void compute_gradient(
+    unsigned int width, unsigned int height,
+    float *src, float *dst)
+{
+    START_ACTIVITY(ACTIVITY_GRADIENT);
+
+    #pragma omp parallel for schedule(static)
+    for (unsigned int i = 1; i <= height; i++) {
+        ispc::compute_gradient_kernel(width, height, src, dst, i);
+    }
+
+    extend(dst, width, height);
+
+    FINISH_ACTIVITY(ACTIVITY_GRADIENT);
+}
+
+static inline void refine(
+    float strength, unsigned int width, unsigned int height,
+    float *image_red, float *image_green, float *image_blue,
+    float *gradients, int *dst)
+{
+    START_ACTIVITY(ACTIVITY_REFINE);
+
+    #pragma omp parallel for schedule(static)
+    for (unsigned int i = 1; i <= height; i++) {
+        ispc::refine_kernel(strength, width, height,
+            image_red, image_green, image_blue,
+            gradients, dst, i);
+    }
+
+    FINISH_ACTIVITY(ACTIVITY_REFINE);
+}
+
+void Anime4kIspc::run()
+{
+    linear_upscale(old_width_, old_height_, (int *)image_,
         width_, height_,
         enlarge_red_, enlarge_green_, enlarge_blue_, lum1_);
-    extend(enlarge_red_, width_, height_);
-    extend(enlarge_green_, width_, height_);
-    extend(enlarge_blue_, width_, height_);
-    extend(lum1_, width_, height_);
-    FINISH_ACTIVITY(ACTIVITY_LINEAR);
 
-    START_ACTIVITY(ACTIVITY_THINLINES);
-    ispc::thin_lines(strength_thinlines_, width_, height_,
+    thin_lines(strength_thinlines_, width_, height_,
         enlarge_red_, enlarge_green_, enlarge_blue_, lum1_,
         thinlines_red_, thinlines_green_, thinlines_blue_, lum2_);
-    extend(thinlines_red_, width_, height_);
-    extend(thinlines_green_, width_, height_);
-    extend(thinlines_blue_, width_, height_);
-    extend(lum2_, width_, height_);
-    FINISH_ACTIVITY(ACTIVITY_THINLINES);
 
-    START_ACTIVITY(ACTIVITY_GRADIENT);
-    ispc::compute_gradient(width_, height_, lum2_, gradients_);
-    extend(gradients_, width_, height_);
-    FINISH_ACTIVITY(ACTIVITY_GRADIENT);
+    compute_gradient(width_, height_, lum2_, gradients_);
 
-    START_ACTIVITY(ACTIVITY_REFINE);
-    ispc::refine(strength_refine_, width_, height_,
+    refine(strength_refine_, width_, height_,
         thinlines_red_, thinlines_green_, thinlines_blue_,
         gradients_, (int *)result_);
-    FINISH_ACTIVITY(ACTIVITY_REFINE);
 }
 
 Anime4kIspc::~Anime4kIspc()

@@ -8,7 +8,7 @@ all: $(EXECUTABLE)
 ARCH=$(shell uname | sed -e 's/-.*//g')
 OBJDIR=objs
 CXX=g++ -m64
-CXXFLAGS=-Iobjs/ -O3 -Wall -mavx2 -mfma -std=c++11
+CXXFLAGS=-Iobjs/ -O3 -Wall -mavx2 -mfma
 HOSTNAME=$(shell hostname)
 
 LIBS       :=
@@ -24,12 +24,11 @@ NVCC=nvcc
 ISPC=ispc
 ISPCFLAGS=-O3 --target=avx2-i32x8 --arch=x86-64 --pic
 
-OMP=-fopenmp -DISPC_USE_OMP
+OMP=-fopenmp
 
 OBJS=$(OBJDIR)/upscale.o $(OBJDIR)/lodepng.o $(OBJDIR)/anime4k_seq.o\
 	$(OBJDIR)/instrument.o $(OBJDIR)/anime4k_ispc.o\
-	$(OBJDIR)/anime4k_kernel_ispc.o $(OBJDIR)/tasksys.o\
-	$(OBJDIR)/anime4k_cuda.o
+	$(OBJDIR)/anime4k_kernel_ispc.o $(OBJDIR)/anime4k_cuda.o
 
 .PHONY: dirs clean
 
@@ -52,7 +51,7 @@ $(OBJDIR)/%.o: %.cu
 
 $(OBJDIR)/anime4k_ispc.o: $(OBJDIR)/anime4k_kernel_ispc.h
 
-$(OBJDIR)/tasksys.o: tasksys.cpp
+$(OBJDIR)/anime4k_ispc.o: anime4k_ispc.cpp
 		$(CXX) $< $(CXXFLAGS) $(OMP) -c -o $@
 
 $(OBJDIR)/%_ispc.h $(OBJDIR)/%_ispc.o: %.ispc
