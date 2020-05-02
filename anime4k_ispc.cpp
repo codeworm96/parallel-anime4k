@@ -77,7 +77,7 @@ static inline void linear_upscale(int old_width, int old_height, int *src,
 {
     START_ACTIVITY(ACTIVITY_LINEAR);
 
-    #pragma omp parallel for schedule(static)
+    #pragma omp parallel for schedule(dynamic, 1)
     for (int i = 0; i < height; i++) {
         ispc::linear_upscale_kernel(old_width, old_height, src,
             width, height, dst_red, dst_green, dst_blue, lum, i);
@@ -100,7 +100,7 @@ static inline void thin_lines(float strength,
 {
     START_ACTIVITY(ACTIVITY_THINLINES);
 
-    #pragma omp parallel for schedule(static)
+    #pragma omp parallel for schedule(dynamic, 1)
     for (unsigned int i = 1; i <= height; i++) {
         ispc::thin_lines_kernel(strength, width, height,
             image_red, image_green, image_blue, src_lum,
@@ -121,7 +121,7 @@ static inline void compute_gradient(
 {
     START_ACTIVITY(ACTIVITY_GRADIENT);
 
-    #pragma omp parallel for schedule(static)
+    #pragma omp parallel for schedule(dynamic, 32)
     for (unsigned int i = 1; i <= height; i++) {
         ispc::compute_gradient_kernel(width, height, src, dst, i);
     }
@@ -138,7 +138,7 @@ static inline void refine(
 {
     START_ACTIVITY(ACTIVITY_REFINE);
 
-    #pragma omp parallel for schedule(static)
+    #pragma omp parallel for schedule(dynamic, 1)
     for (unsigned int i = 1; i <= height; i++) {
         ispc::refine_kernel(strength, width, height,
             image_red, image_green, image_blue,
