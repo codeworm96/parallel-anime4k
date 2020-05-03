@@ -190,7 +190,7 @@ static void compute_luminance(
 {
     START_ACTIVITY(ACTIVITY_LUM);
 
-    #pragma omp parallel for schedule(static)
+    #pragma omp parallel for schedule(dynamic, 1)
     for (unsigned int i = 0; i < height + 2; i++) {
         for (unsigned int j = 0; j < width + 2; j++) {
             int lum_ix = i * (width + 2) + j;
@@ -229,7 +229,7 @@ static void thin_lines(
 
     unsigned int new_width = width + 2;
 
-    #pragma omp parallel for schedule(static)
+    #pragma omp parallel for schedule(dynamic, 1)
     for (unsigned int i = 1; i <= height; i++) {
         for (unsigned int j = 1; j <= width; j++) {
             /*
@@ -430,7 +430,7 @@ static void refine(float strength, unsigned int width, unsigned int height,
 
     unsigned int new_width = width + 2;
 
-    #pragma omp parallel for schedule(static)
+    #pragma omp parallel for schedule(dynamic, 1)
     for (unsigned int i = 1; i <= height; i++) {
         for (unsigned int j = 1; j <= width; j++) {
             /*
