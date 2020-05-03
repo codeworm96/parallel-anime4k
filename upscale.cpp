@@ -9,7 +9,7 @@
 #include "anime4k.h"
 #include "anime4k_seq.h"
 #include "anime4k_cuda.h"
-#include "anime4k_ispc.h"
+#include "anime4k_cpu.h"
 #include "anime4k_omp.h"
 
 static void usage(char *name) {
@@ -91,8 +91,8 @@ int main(int argc, char *argv[]) {
         upscaler = new Anime4kSeq(old_width, old_height, image, width, height);
     } else if (strcasecmp(backend, "cuda")==0) {
         upscaler = new Anime4kCuda(old_width, old_height, image, width, height);
-    } else if (strcasecmp(backend, "ispc")==0) {
-        upscaler = new Anime4kIspc(old_width, old_height, image, width, height);
+    } else if (strcasecmp(backend, "cpu")==0) {
+        upscaler = new Anime4kCpu(old_width, old_height, image, width, height);
     } else if (strcasecmp(backend, "omp")==0) {
         upscaler = new Anime4kOmp(old_width, old_height, image, width, height);
     } else {

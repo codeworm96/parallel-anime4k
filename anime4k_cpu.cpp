@@ -1,7 +1,7 @@
-#include "anime4k_ispc.h"
+#include "anime4k_cpu.h"
 
 #include "instrument.h"
-#include "anime4k_kernel_ispc.h"
+#include "anime4k_kernel_task_ispc.h"
 
 #include <stdlib.h>
 
@@ -10,7 +10,7 @@ static inline float min(float a, float b)
     return a < b ? a : b;
 }
 
-Anime4kIspc::Anime4kIspc(
+Anime4kCpu::Anime4kCpu(
     unsigned int width, unsigned int height, unsigned char *image,
     unsigned int new_width, unsigned int new_height)
 {
@@ -71,7 +71,7 @@ static void extend(float *buf, unsigned int width, unsigned int height)
     }
 }
 
-void Anime4kIspc::run()
+void Anime4kCpu::run()
 {
     START_ACTIVITY(ACTIVITY_LINEAR);
     ispc::linear_upscale(old_width_, old_height_, (int *)image_,
@@ -105,7 +105,7 @@ void Anime4kIspc::run()
     FINISH_ACTIVITY(ACTIVITY_REFINE);
 }
 
-Anime4kIspc::~Anime4kIspc()
+Anime4kCpu::~Anime4kCpu()
 {
     delete [] enlarge_red_;
     delete [] enlarge_green_;

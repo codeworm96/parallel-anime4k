@@ -1,9 +1,9 @@
-#ifndef ANIME4K_ISPC_H_
-#define ANIME4K_ISPC_H_
+#ifndef ANIME4K_CPU_H_
+#define ANIME4K_CPU_H_
 
 #include "anime4k.h"
 
-class Anime4kIspc : public Anime4k {
+class Anime4kCpu : public Anime4k {
 private:
     unsigned int old_width_;
     unsigned int old_height_;
@@ -23,12 +23,12 @@ private:
     float strength_thinlines_;
     float strength_refine_;
 public:
-    Anime4kIspc(
+    Anime4kCpu(
         unsigned int width, unsigned int height, unsigned char *image,
         unsigned int new_width, unsigned int new_height);
-    virtual ~Anime4kIspc();
+    virtual ~Anime4kCpu();
     void run();
     unsigned char *get_image() { return result_; }
 };
 
-#endif /* ANIME4K_ISPC_H_ */
+#endif /* ANIME4K_CPU_H_ */
