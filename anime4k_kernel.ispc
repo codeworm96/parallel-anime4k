@@ -66,8 +66,7 @@ export void linear_upscale(
 }
 
 inline void get_largest(uniform float strength,
-    uniform float src_red[], uniform float src_green[], uniform float src_blue[],
-    bool &mark, float &old_lum, float<3> &color1, float<3> &color2, float<3> &color3,
+    bool &mark, float &old_lum, int &ix1, int &ix2, int &ix3,
     float cc, float a, float b, float c, int a_ix, int b_ix, int c_ix)
 {
     float new_lum = cc * (1 - strength) +
@@ -76,15 +75,9 @@ inline void get_largest(uniform float strength,
     if (new_lum > old_lum) {
         old_lum = new_lum;
         mark = true;
-        color1.r = src_red[a_ix];
-        color1.g = src_green[a_ix];
-        color1.b = src_blue[a_ix];
-        color2.r = src_red[b_ix];
-        color2.g = src_green[b_ix];
-        color2.b = src_blue[b_ix];
-        color3.r = src_red[c_ix];
-        color3.g = src_green[c_ix];
-        color3.b = src_blue[c_ix];
+        ix1 = a_ix;
+        ix2 = b_ix;
+        ix3 = c_ix;
     }
 }
 
@@ -125,9 +118,9 @@ export void thin_lines(
             float br = src_lum[br_ix];
 
             float lum = cc;
-            float<3> color1;
-            float<3> color2;
-            float<3> color3;
+            int ix1;
+            int ix2;
+            int ix3;
 
             bool mark = false;
 
@@ -135,8 +128,8 @@ export void thin_lines(
             float maxDark = max3v(br, b, bl);
             float minLight = min3v(tl, t, tr);
             if (minLight > cc && minLight > maxDark) {
-                get_largest(strength, image_red, image_green, image_blue,
-                    mark, lum, color1, color2, color3,
+                get_largest(strength,
+                    mark, lum, ix1, ix2, ix3,
                     cc, tl, t, tr, tl_ix, t_ix, tr_ix);
             }
 
@@ -144,8 +137,8 @@ export void thin_lines(
             maxDark = max3v(tl, t, tr);
             minLight = min3v(br, b, bl);
             if (minLight > cc && minLight > maxDark) {
-                get_largest(strength, image_red, image_green, image_blue,
-                    mark, lum, color1, color2, color3,
+                get_largest(strength,
+                    mark, lum, ix1, ix2, ix3,
                     cc, br, b, bl, br_ix, b_ix, bl_ix);
             }
 
@@ -153,8 +146,8 @@ export void thin_lines(
             maxDark = max3v(cc, l, b);
             minLight = min3v(r, t, tr);
             if (minLight > maxDark) {
-                get_largest(strength, image_red, image_green, image_blue,
-                    mark, lum, color1, color2, color3,
+                get_largest(strength,
+                    mark, lum, ix1, ix2, ix3,
                     cc, r, t, tr, r_ix, t_ix, tr_ix);
             }
 
@@ -162,8 +155,8 @@ export void thin_lines(
             maxDark = max3v(cc, r, t);
             minLight = min3v(bl, l, b);
             if (minLight > maxDark) {
-                get_largest(strength, image_red, image_green, image_blue,
-                    mark, lum, color1, color2, color3,
+                get_largest(strength,
+                    mark, lum, ix1, ix2, ix3,
                     cc, bl, l, b, bl_ix, l_ix, b_ix);
             }
 
@@ -171,8 +164,8 @@ export void thin_lines(
             maxDark = max3v(l, tl, bl);
             minLight = min3v(r, br, tr);
             if (minLight > cc && minLight > maxDark) {
-                get_largest(strength, image_red, image_green, image_blue,
-                    mark, lum, color1, color2, color3,
+                get_largest(strength,
+                    mark, lum, ix1, ix2, ix3,
                     cc, r, br, tr, r_ix, br_ix, tr_ix);
             }
 
@@ -180,8 +173,8 @@ export void thin_lines(
             maxDark = max3v(r, br, tr);
             minLight = min3v(l, tl, bl);
             if (minLight > cc && minLight > maxDark) {
-                get_largest(strength, image_red, image_green, image_blue,
-                    mark, lum, color1, color2, color3,
+                get_largest(strength,
+                    mark, lum, ix1, ix2, ix3,
                     cc, l, tl, bl, l_ix, tl_ix, bl_ix);
             }
 
@@ -189,8 +182,8 @@ export void thin_lines(
             maxDark = max3v(cc, l, t);
             minLight = min3v(r, br, b);
             if (minLight > maxDark) {
-                get_largest(strength, image_red, image_green, image_blue,
-                    mark, lum, color1, color2, color3,
+                get_largest(strength,
+                    mark, lum, ix1, ix2, ix3,
                     cc, r, br, b, r_ix, br_ix, b_ix);
             }
 
@@ -198,8 +191,8 @@ export void thin_lines(
             maxDark = max3v(cc, r, b);
             minLight = min3v(t, l, tl);
             if (minLight > maxDark) {
-                get_largest(strength, image_red, image_green, image_blue,
-                    mark, lum, color1, color2, color3,
+                get_largest(strength,
+                    mark, lum, ix1, ix2, ix3,
                     cc, t, l, tl, t_ix, l_ix, tl_ix);
             }
 
@@ -211,11 +204,11 @@ export void thin_lines(
 
             if (mark) {
                 color.r = color.r * (1 - strength) +
-                    ((color1.r + color2.r + color3.r) / 3) * strength;
+                    ((image_red[ix1] + image_red[ix2] + image_red[ix3]) / 3) * strength;
                 color.g = color.g * (1 - strength) +
-                    ((color1.g + color2.g + color3.g) / 3) * strength;
+                    ((image_green[ix1] + image_green[ix2] + image_green[ix3]) / 3) * strength;
                 color.b = color.b * (1 - strength) +
-                    ((color1.b + color2.b + color3.b) / 3) * strength;
+                    ((image_blue[ix1] + image_blue[ix2] + image_blue[ix3]) / 3) * strength;
             }
 
             dst_lum[cc_ix] = (color.r * 2 + color.g * 3 + color.b) / 6;
