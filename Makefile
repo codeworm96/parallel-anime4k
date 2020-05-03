@@ -29,7 +29,8 @@ OMP=-fopenmp -DISPC_USE_OMP
 OBJS=$(OBJDIR)/upscale.o $(OBJDIR)/lodepng.o $(OBJDIR)/anime4k_seq.o\
 	$(OBJDIR)/instrument.o $(OBJDIR)/anime4k_cpu.o\
 	$(OBJDIR)/anime4k_kernel_task_ispc.o $(OBJDIR)/tasksys.o\
-	$(OBJDIR)/anime4k_cuda.o $(OBJDIR)/anime4k_omp.o
+	$(OBJDIR)/anime4k_cuda.o $(OBJDIR)/anime4k_omp.o\
+	$(OBJDIR)/anime4k_ispc.o $(OBJDIR)/anime4k_kernel_ispc.o
 
 .PHONY: dirs clean
 
@@ -51,6 +52,8 @@ $(OBJDIR)/%.o: %.cu
 		$(NVCC) $< $(NVCCFLAGS) -c -o $@
 
 $(OBJDIR)/anime4k_cpu.o: $(OBJDIR)/anime4k_kernel_task_ispc.h
+
+$(OBJDIR)/anime4k_ispc.o: $(OBJDIR)/anime4k_kernel_ispc.h
 
 $(OBJDIR)/anime4k_omp.o: anime4k_omp.cpp
 		$(CXX) $< $(CXXFLAGS) $(OMP) -c -o $@

@@ -6,78 +6,72 @@ inline float max3v(float a, float b, float c) {
     return max(max(a, b), c);
 }
 
-inline float<3> decode(uniform int src[], int ix)
+export void decode(
+    uniform unsigned int width, uniform unsigned int height, uniform int src[],
+    uniform float red[], uniform float green[], uniform float blue[])
 {
-    float<3> res;
-    int rgba = src[ix];
-    res.r = (rgba & 0xFF) / 255.0f;
-    res.g = ((rgba >> 8) & 0xFF) / 255.0f;
-    res.b = ((rgba >> 16) & 0xFF) / 255.0f;
-    return res;
+    for (uniform unsigned int i = 0; i < height; i++) {
+        foreach (j = 0 ... width) {
+            int old_ix = i * width + j;
+            int new_ix = (i + 1) * (width + 2) + j + 1;
+            int rgba = src[old_ix];
+            red[new_ix] = (rgba & 0xFF) / 255.0f;
+            green[new_ix] = ((rgba >> 8) & 0xFF) / 255.0f;
+            blue[new_ix] = ((rgba >> 16) & 0xFF) / 255.0f;
+        }
+    }
 }
 
-inline float<3> interpolate(
-    float<3> tl, float<3> tr,
-    float<3> bl, float<3> br, float f, float g)
+inline float interpolate(
+    float tl, float tr,
+    float bl, float br, float f, float g)
 {
-    float<3> l = tl * (1 - f) + bl * f;
-    float<3> r = tr * (1 - f) + br * f;
+    float l = tl * (1 - f) + bl * f;
+    float r = tr * (1 - f) + br * f;
     return l * (1 - g) + r * g;
 }
 
-#define LINEAR_SPAN 1
-
-task void linear_upscale_task(
-    uniform int old_width, uniform int old_height, uniform int src[],
+export void linear_upscale(
+    uniform int old_width, uniform int old_height,
+    uniform float src_red[], uniform float src_green[], uniform float src_blue[],
     uniform int width, uniform int height,
     uniform float dst_red[], uniform float dst_green[], uniform float dst_blue[], uniform float lum[])
 {
-    uniform unsigned int new_width = width + 2;
-    uniform int maxh = old_height - 1;
-    uniform int maxw = old_width - 1;
-    uniform unsigned int ibegin = taskIndex * LINEAR_SPAN;
-    uniform unsigned int iend =
-        min(taskIndex * LINEAR_SPAN + LINEAR_SPAN, (unsigned int)height);
-
-    for (uniform int i = ibegin; i < iend; i++) {
+    for (uniform int i = 0; i < height; i++) {
         foreach(j = 0 ... width) {
             float x = (float)(i * old_height) / height;
             float y = (float)((int)j * old_width) / width;
             float floor_x = floor(x);
             float floor_y = floor(y);
-            int ht = (int)floor_x;
-            int hb = min(ht + 1, maxh);
-            int wl = (int)floor_y;
-            int wr = min(wl + 1, maxw);
+            int h = (int)floor_x + 1;
+            int w = (int)floor_y + 1;
             float f = x - floor_x;
             float g = y - floor_y;
 
-            int ix = (i + 1) * new_width + j + 1;
-            int tl = ht * old_width + wl;
-            int tr = ht * old_width + wr;
-            int bl = hb * old_width + wl;
-            int br = hb * old_width + wr;
+            int ix = (i + 1) * (width + 2) + j + 1;
+            int tl = h * (old_width + 2) + w;
+            int tr = tl + 1;
+            int bl = tl + old_width + 2;
+            int br = bl + 1;
 
-            float<3> color = interpolate(
-                decode(src, tl), decode(src, tr),
-                decode(src, bl), decode(src, br), f, g);
+            float red = interpolate(
+                src_red[tl], src_red[tr],
+                src_red[bl], src_red[br], f, g);
 
-            lum[ix] = (color.r * 2 + color.g * 3 + color.b) / 6;
-            dst_red[ix] = color.r;
-            dst_green[ix] = color.g;
-            dst_blue[ix] = color.b;
+            float green = interpolate(
+                src_green[tl], src_green[tr],
+                src_green[bl], src_green[br], f, g);
+
+            float blue = interpolate(
+                src_blue[tl], src_blue[tr],
+                src_blue[bl], src_blue[br], f, g);
+
+            lum[ix] = (red * 2 + green * 3 + blue) / 6;
+            dst_red[ix] = red;
+            dst_green[ix] = green;
+            dst_blue[ix] = blue;
         }
     }
-}
-
-export void task_linear_upscale(
-    uniform int old_width, uniform int old_height, uniform int src[],
-    uniform int width, uniform int height,
-    uniform float dst_red[], uniform float dst_green[], uniform float dst_blue[], uniform float lum[])
-{
-    uniform int taskCount = (height + LINEAR_SPAN - 1) / LINEAR_SPAN;
-    launch[taskCount] linear_upscale_task(old_width, old_height, src,
-        width, height, dst_red, dst_green, dst_blue, lum);
 }
 
 inline void get_largest(uniform float strength,
@@ -99,9 +93,7 @@ inline void get_largest(uniform float strength,
     }
 }
 
-#define THINLINES_SPAN 1
-
-task void thin_lines_task(
+export void thin_lines(
     uniform float strength, uniform unsigned int width, uniform unsigned int height,
     uniform float image_red[], uniform float image_green[], uniform float image_blue[],
     uniform float src_lum[],
@@ -109,11 +101,8 @@ task void thin_lines_task(
     uniform float dst_lum[])
 {
     uniform unsigned int new_width = width + 2;
-    uniform unsigned int ibegin = taskIndex * THINLINES_SPAN + 1;
-    uniform unsigned int iend =
-        min(taskIndex * THINLINES_SPAN + THINLINES_SPAN, height);
 
-    for (uniform unsigned int i = ibegin; i <= iend; i++) {
+    for (uniform unsigned int i = 1; i <= height; i++) {
         foreach (j = 1 ... width + 1) {
             /*
              * [tl  t tr]
@@ -218,30 +207,13 @@ task void thin_lines_task(
     }
 }
 
-export void task_thin_lines(
-    uniform float strength, uniform unsigned int width, uniform unsigned int height,
-    uniform float image_red[], uniform float image_green[], uniform float image_blue[],
-    uniform float src_lum[],
-    uniform float dst_red[], uniform float dst_green[], uniform float dst_blue[],
-    uniform float dst_lum[])
-{
-    uniform int taskCount = (height + THINLINES_SPAN - 1) / THINLINES_SPAN;
-    launch[taskCount] thin_lines_task(strength, width, height, image_red, image_green, image_blue,
-        src_lum, dst_red, dst_green, dst_blue, dst_lum);
-}
-
-#define GRADIENT_SPAN 64
-
-task void compute_gradient_task(
+export void compute_gradient(
     uniform unsigned int width, uniform unsigned int height,
     uniform float src[], uniform float dst[])
 {
     uniform unsigned int new_width = width + 2;
-    uniform unsigned int ibegin = taskIndex * GRADIENT_SPAN + 1;
-    uniform unsigned int iend =
-        min(taskIndex * GRADIENT_SPAN + GRADIENT_SPAN, height);
 
-    for (uniform unsigned int i = ibegin; i <= iend; i++) {
+    for (uniform unsigned int i = 1; i <= height; i++) {
         foreach (j = 1 ... width + 1) {
             /*
              * [tl  t tr]
@@ -287,14 +259,6 @@ task void compute_gradient_task(
     }
 }
 
-export void task_compute_gradient(
-    uniform unsigned int width, uniform unsigned int height,
-    uniform float src[], uniform float dst[])
-{
-    uniform int taskCount = (height + GRADIENT_SPAN - 1) / GRADIENT_SPAN;
-    launch[taskCount] compute_gradient_task(width, height, src, dst);
-}
-
 inline int quantize(float x)
 {
     int r = x * 255;
@@ -320,19 +284,14 @@ inline int get_average(uniform float strength,
     return rgba;
 }
 
-#define REFINE_SPAN 1
-
-task void refine_task(
+export void refine(
     uniform float strength, uniform unsigned int width, uniform unsigned int height,
     uniform float image_red[], uniform float image_green[], uniform float image_blue[],
     uniform float gradients[], uniform int dst[])
 {
     uniform unsigned int new_width = width + 2;
-    uniform unsigned int ibegin = taskIndex * REFINE_SPAN + 1;
-    uniform unsigned int iend =
-        min(taskIndex * REFINE_SPAN + REFINE_SPAN, height);
 
-    for (uniform unsigned int i = ibegin; i <= iend; i++) {
+    for (uniform unsigned int i = 1; i <= height; i++) {
         foreach (j = 1 ... width + 1) {
             /*
              * [tl  t tr]
@@ -449,12 +408,22 @@ task void refine_task(
     }
 }
 
-export void task_refine(
-    uniform float strength, uniform unsigned int width, uniform unsigned int height,
-    uniform float image_red[], uniform float image_green[], uniform float image_blue[],
-    uniform float gradients[], uniform int dst[])
+export void encode(
+    uniform unsigned int width, uniform unsigned int height,
+    uniform float red[], uniform float green[], uniform float blue[],
+    uniform int dst[])
 {
-    uniform int taskCount = (height + REFINE_SPAN - 1) / REFINE_SPAN;
-    launch[taskCount] refine_task(strength, width, height, image_red, image_green, image_blue,
-        gradients, dst);
+    for (uniform unsigned int i = 0; i < height; i++) {
+        foreach (j = 0 ... width) {
+            int old_ix = (i + 1) * (width + 2) + j + 1;
+            int new_ix = i * width + j;
+            int rgba = 0xFF000000;
+
+            rgba |= quantize(blue[old_ix]) << 16;
+            rgba |= quantize(green[old_ix]) << 8;
+            rgba |= quantize(red[old_ix]);
+
+            dst[new_ix] = rgba;
+        }
+    }
 }

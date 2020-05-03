@@ -1,7 +1,7 @@
-#include "anime4k_cpu.h"
+#include "anime4k_ispc.h"
 
 #include "instrument.h"
-#include "anime4k_kernel_task_ispc.h"
+#include "anime4k_kernel_ispc.h"
 
 #include <stdlib.h>
 
@@ -10,7 +10,7 @@ static inline float min(float a, float b)
     return a < b ? a : b;
 }
 
-Anime4kCpu::Anime4kCpu(
+Anime4kIspc::Anime4kIspc(
     unsigned int width, unsigned int height, unsigned char *image,
     unsigned int new_width, unsigned int new_height)
 {
@@ -21,7 +21,12 @@ Anime4kCpu::Anime4kCpu(
     height_ = new_height;
 
     /* ghost pixels added to avoid out-of-bounds */
+    unsigned int old_pixels = (width + 2) * (height + 2);
     unsigned int pixels = (new_width + 2) * (new_height + 2);
+
+    original_red_ = new float[old_pixels];
+    original_green_ = new float[old_pixels];
+    original_blue_ = new float[old_pixels];
 
     enlarge_red_ = new float[pixels];
     enlarge_green_ = new float[pixels];
@@ -71,10 +76,19 @@ static void extend(float *buf, unsigned int width, unsigned int height)
     }
 }
 
-void Anime4kCpu::run()
+void Anime4kIspc::run()
 {
+    START_ACTIVITY(ACTIVITY_DECODE);
+    ispc::decode(old_width_, old_height_, (int *)image_,
+        original_red_, original_green_, original_blue_);
+    extend(original_red_, old_width_, old_height_);
+    extend(original_green_, old_width_, old_height_);
+    extend(original_blue_, old_width_, old_height_);
+    FINISH_ACTIVITY(ACTIVITY_DECODE);
+
     START_ACTIVITY(ACTIVITY_LINEAR);
-    ispc::task_linear_upscale(old_width_, old_height_, (int *)image_,
+    ispc::linear_upscale(old_width_, old_height_,
+        original_red_, original_green_, original_blue_,
         width_, height_,
         enlarge_red_, enlarge_green_, enlarge_blue_, lum1_);
     extend(enlarge_red_, width_, height_);
@@ -84,7 +98,7 @@ void Anime4kCpu::run()
     FINISH_ACTIVITY(ACTIVITY_LINEAR);
 
     START_ACTIVITY(ACTIVITY_THINLINES);
-    ispc::task_thin_lines(strength_thinlines_, width_, height_,
+    ispc::thin_lines(strength_thinlines_, width_, height_,
         enlarge_red_, enlarge_green_, enlarge_blue_, lum1_,
         thinlines_red_, thinlines_green_, thinlines_blue_, lum2_);
     extend(thinlines_red_, width_, height_);
@@ -94,19 +108,22 @@ void Anime4kCpu::run()
     FINISH_ACTIVITY(ACTIVITY_THINLINES);
 
     START_ACTIVITY(ACTIVITY_GRADIENT);
-    ispc::task_compute_gradient(width_, height_, lum2_, gradients_);
+    ispc::compute_gradient(width_, height_, lum2_, gradients_);
     extend(gradients_, width_, height_);
     FINISH_ACTIVITY(ACTIVITY_GRADIENT);
 
     START_ACTIVITY(ACTIVITY_REFINE);
-    ispc::task_refine(strength_refine_, width_, height_,
+    ispc::refine(strength_refine_, width_, height_,
         thinlines_red_, thinlines_green_, thinlines_blue_,
         gradients_, (int *)result_);
     FINISH_ACTIVITY(ACTIVITY_REFINE);
 }
 
-Anime4kCpu::~Anime4kCpu()
+Anime4kIspc::~Anime4kIspc()
 {
+    delete [] original_red_;
+    delete [] original_green_;
+    delete [] original_blue_;
     delete [] enlarge_red_;
     delete [] enlarge_green_;
     delete [] enlarge_blue_;
