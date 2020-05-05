@@ -14,10 +14,10 @@
 __constant__ Param cudaParam;
 unsigned char *cudaImage;
 unsigned char *cudaResult;
-__device__ float *imageBuff;
-__device__ float *preprocessedBuff;
-__device__ float *luminaceBuff;
-__device__ float *gradientBuff;
+float *imageBuff;
+float *preprocessedBuff;
+float *luminaceBuff;
+float *gradientBuff;
 
 
 
@@ -71,7 +71,7 @@ interpolate(unsigned char tl, unsigned char tr,
     return t*minusg+b*g;
 }
 
-__global__ __inline__ void
+__global__ void
 enlarge(unsigned char *image, float *enlarged)
 {
 
@@ -112,7 +112,7 @@ enlarge(unsigned char *image, float *enlarged)
 }
 
 
-__global__ __inline__ void
+__global__ void
 compute_luminance(float *image, float *luminace) 
 {
     int dst_width = cudaParam.dst_width;
@@ -159,7 +159,7 @@ get_largest(float strength, float *image, float *lum,
 
 
 
-__global__ __inline__ void
+__global__ void
 preprocess(float *image, float *lum, float *preprocessed)
 {
     int dst_width = cudaParam.dst_width;
@@ -263,7 +263,7 @@ clamp(float x, float lower, float upper)
     return min(upper,max(x,lower));
 }
 
-__global__ __inline__ void
+__global__ void
 compute_graident(float *lum, float *gradient)
 {
     int dst_width = cudaParam.dst_width;
@@ -333,7 +333,7 @@ get_average(float strength, float *image, float color[3],
 }
 
 
-__global__ __inline__ void
+__global__ void
 push(float *image, float *gradient, float *pushed)
 {
 
@@ -429,7 +429,7 @@ quantize(float x)
     return min(255,max(r,0));
 }
 
-__global__ __inline__ void
+__global__ void
 output(float *image, unsigned char *dst)
 {
     int dst_width = cudaParam.dst_width;
