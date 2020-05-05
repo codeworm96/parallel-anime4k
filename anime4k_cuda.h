@@ -10,6 +10,8 @@ struct Param {
     unsigned int dst_height;
     unsigned int src_bytes;
     unsigned int dst_bytes;
+    unsigned int dst_width_padded;
+    unsigned int dst_height_padded;
     float strength_preprocessing;
     float strength_push;
 };

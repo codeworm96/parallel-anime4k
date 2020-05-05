@@ -7,16 +7,19 @@
 #include <cuda.h>
 #include <cuda_runtime.h>
 
-#define REGIONW 28
-#define REGIONH 28
 #define PADDING 2
-#define THREADW (REGIONW+2*PADDING)
-#define THREADH (REGIONH+2*PADDING)
+#define THREADW 32
+#define THREADH 32
 
 __constant__ Param cudaParam;
 unsigned char *cudaImage;
 unsigned char *cudaResult;
-__global__ void kernel(unsigned char *src, unsigned char *dst);
+__device__ float *imageBuff;
+__device__ float *preprocessedBuff;
+__device__ float *luminaceBuff;
+__device__ float *gradientBuff;
+
+
 
 Anime4kCuda::Anime4kCuda(
     unsigned int width, unsigned int height, unsigned char *image,
@@ -30,22 +33,18 @@ Anime4kCuda::Anime4kCuda(
     param.dst_bytes = 4*new_width*new_height*sizeof(unsigned char);
     param.strength_preprocessing = min((float)new_width / width / 6.0f, 1.0f);
     param.strength_push = min((float)new_width / width / 2.0f, 1.0f);
+    param.dst_width_padded = new_width+2*PADDING;
+    param.dst_height_padded = new_height+2*PADDING;
     image_ = image;
     result_ = new unsigned char[param.dst_bytes];
 
     cudaMalloc(&cudaImage, param.src_bytes);
     cudaMalloc(&cudaResult, param.dst_bytes);
+    cudaMalloc(&imageBuff, param.dst_width_padded*param.dst_height_padded*3*sizeof(float));
+    cudaMalloc(&preprocessedBuff, param.dst_width_padded*param.dst_height_padded*3*sizeof(float));
+    cudaMalloc(&luminaceBuff,param.dst_width_padded*param.dst_height_padded*sizeof(float));
+    cudaMalloc(&gradientBuff,param.dst_width_padded*param.dst_height_padded*sizeof(float));
     cudaMemcpyToSymbol(cudaParam, &param, sizeof(Param));
-}
-
-void Anime4kCuda::run()
-{
-    dim3 gridDim((param.dst_width+REGIONW-1)/REGIONW, 
-                (param.dst_height+REGIONH-1)/REGIONH);
-    dim3 blockDim(THREADW,THREADH);
-    cudaMemcpy(cudaImage, image_, param.src_bytes,cudaMemcpyHostToDevice);
-    kernel<<<gridDim,blockDim>>>(cudaImage,cudaResult);
-    cudaMemcpy(result_, cudaResult, param.dst_bytes,cudaMemcpyDeviceToHost);
 }
 
 Anime4kCuda::~Anime4kCuda()
@@ -53,6 +52,10 @@ Anime4kCuda::~Anime4kCuda()
     delete [] result_;
     cudaFree(cudaImage);
     cudaFree(cudaResult);
+    cudaFree(imageBuff);
+    cudaFree(preprocessedBuff);
+    cudaFree(luminaceBuff);
+    cudaFree(gradientBuff);
 }
 
 /**  cuda code **/
@@ -68,19 +71,22 @@ interpolate(unsigned char tl, unsigned char tr,
     return t*minusg+b*g;
 }
 
-__device__ __inline__ void
-enlarge(unsigned char *image, float *enlarged, bool qualified)
+__global__ __inline__ void
+enlarge(unsigned char *image, float *enlarged)
 {
-    int threadId = threadIdx.y*blockDim.x+threadIdx.x;
-    int pixelX = blockIdx.x*REGIONW+threadIdx.x-PADDING;
-    int pixelY = blockIdx.y*REGIONH+threadIdx.y-PADDING;
+
     int src_width = cudaParam.src_width;
     int src_height = cudaParam.src_height;
     int dst_width = cudaParam.dst_width;
     int dst_height = cudaParam.dst_height;
 
-    
-    if (qualified) {
+    int pixelX = blockIdx.x*blockDim.x+threadIdx.x-PADDING;
+    int pixelY = blockIdx.y*blockDim.y+threadIdx.y-PADDING;
+    int buffId = (blockIdx.y*blockDim.y+threadIdx.y) * cudaParam.dst_width_padded +
+                    (blockIdx.x*blockDim.x+threadIdx.x);
+    // printf("threadId: %d\n", threadId);
+    // printf("pixelX: %d, pixelY: %d\n", pixelX, pixelY);
+    if (pixelX<dst_width+PADDING && pixelY<dst_height+PADDING) {
         // map padded pixel to valid pixel
         if (pixelX<0) pixelX = 0;
         if (pixelX>=dst_width) pixelX=dst_width-1;
@@ -99,20 +105,26 @@ enlarge(unsigned char *image, float *enlarged, bool qualified)
         int bl = tl + 4*src_width;
         int br = bl + 4;
         
-        enlarged[3*threadId] = interpolate(image[tl],image[tr],image[bl],image[br],f,g);
-        enlarged[3*threadId+1] = interpolate(image[tl+1],image[tr+1],image[bl+1],image[br+1],f,g);
-        enlarged[3*threadId+2] = interpolate(image[tl+2],image[tr+2],image[bl+2],image[br+2],f,g);
+        enlarged[3*buffId] = interpolate(image[tl],image[tr],image[bl],image[br],f,g);
+        enlarged[3*buffId+1] = interpolate(image[tl+1],image[tr+1],image[bl+1],image[br+1],f,g);
+        enlarged[3*buffId+2] = interpolate(image[tl+2],image[tr+2],image[bl+2],image[br+2],f,g);
     }
 }
 
 
-__device__ __inline__ void
-compute_luminance(float *image, float *luminace, bool qualified) 
+__global__ __inline__ void
+compute_luminance(float *image, float *luminace) 
 {
-    if (qualified) {
-        int threadId = threadIdx.y*blockDim.x+threadIdx.x;
-        luminace[threadId] = (image[3*threadId]*2+image[3*threadId+1]*3 
-                                + image[3*threadId]) / 6.0f;
+    int dst_width = cudaParam.dst_width;
+    int dst_height = cudaParam.dst_height;
+
+    int pixelX = blockIdx.x*blockDim.x+threadIdx.x-PADDING;
+    int pixelY = blockIdx.y*blockDim.y+threadIdx.y-PADDING;
+    int buffId = (blockIdx.y*blockDim.y+threadIdx.y) * cudaParam.dst_width_padded +
+                    (blockIdx.x*blockDim.x+threadIdx.x);
+    if (pixelX<dst_width+PADDING && pixelY<dst_height+PADDING) {
+        luminace[buffId] = (image[3*buffId]*2+image[3*buffId+1]*3 
+            + image[3*buffId]) / 6.0f;
     }
 }
 
@@ -147,26 +159,32 @@ get_largest(float strength, float *image, float *lum,
 
 
 
-__device__ __inline__ void
-preprocess(float *image, float *lum, float *preprocessed, bool qualified)
+__global__ __inline__ void
+preprocess(float *image, float *lum, float *preprocessed)
 {
-    int threadId = threadIdx.y*blockDim.x+threadIdx.x;
+    int dst_width = cudaParam.dst_width;
+    int dst_height = cudaParam.dst_height;
 
+    int pixelX = blockIdx.x*blockDim.x+threadIdx.x-PADDING;
+    int pixelY = blockIdx.y*blockDim.y+threadIdx.y-PADDING;
+    int buffId = (blockIdx.y*blockDim.y+threadIdx.y) * cudaParam.dst_width_padded +
+                    (blockIdx.x*blockDim.x+threadIdx.x);
     float color[4];
 
-    if (qualified) {
-        color[0] = image[3 * threadId];
-        color[1] = image[3 * threadId + 1];
-        color[2] = image[3 * threadId + 2];
-        color[3] = lum[threadId];
+    if (pixelX >= -PADDING+1 && pixelY >= -PADDING+1 &&
+        pixelX < dst_width+PADDING-1 && pixelY < dst_height+PADDING-1) {
+        color[0] = image[3 * buffId];
+        color[1] = image[3 * buffId + 1];
+        color[2] = image[3 * buffId + 2];
+        color[3] = lum[buffId];
         
-        int cc_ix = threadId;
+        int cc_ix = buffId;
         int r_ix = cc_ix + 1;
         int l_ix = cc_ix - 1;
-        int t_ix = cc_ix - blockDim.x;
+        int t_ix = cc_ix - cudaParam.dst_width_padded;
         int tl_ix = t_ix - 1;
         int tr_ix = t_ix + 1;
-        int b_ix = cc_ix + blockDim.x;
+        int b_ix = cc_ix + cudaParam.dst_width_padded;
         int bl_ix = b_ix - 1;
         int br_ix = b_ix + 1;
 
@@ -232,9 +250,9 @@ preprocess(float *image, float *lum, float *preprocessed, bool qualified)
         }
 
 
-        preprocessed[3 * threadId] = color[0];
-        preprocessed[3 * threadId + 1] = color[1];
-        preprocessed[3 * threadId + 2] = color[2];
+        preprocessed[3 * buffId] = color[0];
+        preprocessed[3 * buffId + 1] = color[1];
+        preprocessed[3 * buffId + 2] = color[2];
     }
 }
 
@@ -245,22 +263,31 @@ clamp(float x, float lower, float upper)
     return min(upper,max(x,lower));
 }
 
-__device__ __inline__ void
-compute_graident(float *lum, float *gradient, bool qualified)
+__global__ __inline__ void
+compute_graident(float *lum, float *gradient)
 {
-    if (qualified) {
-        int cc_ix = threadIdx.y*blockDim.x+threadIdx.x;
+    int dst_width = cudaParam.dst_width;
+    int dst_height = cudaParam.dst_height;
+
+    int pixelX = blockIdx.x*blockDim.x+threadIdx.x-PADDING;
+    int pixelY = blockIdx.y*blockDim.y+threadIdx.y-PADDING;
+    int buffId = (blockIdx.y*blockDim.y+threadIdx.y) * cudaParam.dst_width_padded +
+                    (blockIdx.x*blockDim.x+threadIdx.x);
+
+    if (pixelX >= -PADDING+1 && pixelY >= -PADDING+1 &&
+        pixelX < dst_width+PADDING-1 && pixelY < dst_height+PADDING-1) {
+        int cc_ix = buffId;
     
         /* [tl t tr]
          * [l cc  r]
          * [bl b br]
          */
-        int t_ix = cc_ix - blockDim.x;
+        int t_ix = cc_ix - cudaParam.dst_width_padded;
         int tl_ix = t_ix - 1;
         int tr_ix = t_ix + 1;
         int l_ix = cc_ix - 1;
         int r_ix = cc_ix + 1;
-        int b_ix = cc_ix + blockDim.x;
+        int b_ix = cc_ix + cudaParam.dst_width_padded;
         int bl_ix = b_ix - 1;
         int br_ix = b_ix + 1;
     
@@ -306,24 +333,32 @@ get_average(float strength, float *image, float color[3],
 }
 
 
-__device__ __inline__ void
-push(float *image, float *gradient, float *pushed, bool qualified)
+__global__ __inline__ void
+push(float *image, float *gradient, float *pushed)
 {
-    int threadId = threadIdx.y*blockDim.x+threadIdx.x;
+
     float color[3];
+    int dst_width = cudaParam.dst_width;
+    int dst_height = cudaParam.dst_height;
 
-    if (qualified) {
-        color[0] = image[3 * threadId];
-        color[1] = image[3 * threadId + 1];
-        color[2] = image[3 * threadId + 2];
+    int pixelX = blockIdx.x*blockDim.x+threadIdx.x-PADDING;
+    int pixelY = blockIdx.y*blockDim.y+threadIdx.y-PADDING;
+    int buffId = (blockIdx.y*blockDim.y+threadIdx.y) * cudaParam.dst_width_padded +
+                    (blockIdx.x*blockDim.x+threadIdx.x);
 
-        int cc_ix = threadId;
+    if (pixelX >= -PADDING+1 && pixelY >= -PADDING+1 &&
+        pixelX < dst_width+PADDING-1 && pixelY < dst_height+PADDING-1) {
+        color[0] = image[3 * buffId];
+        color[1] = image[3 * buffId + 1];
+        color[2] = image[3 * buffId + 2];
+
+        int cc_ix = buffId;
         int r_ix = cc_ix + 1;
         int l_ix = cc_ix - 1;
-        int t_ix = cc_ix - blockDim.x;
+        int t_ix = cc_ix - cudaParam.dst_width_padded;
         int tl_ix = t_ix - 1;
         int tr_ix = t_ix + 1;
-        int b_ix = cc_ix + blockDim.x;
+        int b_ix = cc_ix + cudaParam.dst_width_padded;
         int bl_ix = b_ix - 1;
         int br_ix = b_ix + 1;
 
@@ -381,9 +416,9 @@ push(float *image, float *gradient, float *pushed, bool qualified)
                 cc_ix, t_ix, l_ix, tl_ix);
         }
 
-        pushed[3 * threadId] = color[0];
-        pushed[3 * threadId + 1] = color[1];
-        pushed[3 * threadId + 2] = color[2];
+        pushed[3 * buffId] = color[0];
+        pushed[3 * buffId + 1] = color[1];
+        pushed[3 * buffId + 2] = color[2];
     }
 }
 
@@ -394,77 +429,55 @@ quantize(float x)
     return min(255,max(r,0));
 }
 
-__device__ __inline__ void
-output(float *image, unsigned char *dst, bool qualified)
+__global__ __inline__ void
+output(float *image, unsigned char *dst)
 {
-    int threadId = threadIdx.y*blockDim.x+threadIdx.x;
-    int pixelX = blockIdx.x*REGIONW+threadIdx.x-PADDING;
-    int pixelY = blockIdx.y*REGIONH+threadIdx.y-PADDING;
     int dst_width = cudaParam.dst_width;
-    int pixelId = pixelY*dst_width+pixelX;
+    int dst_height = cudaParam.dst_height;
 
-    if (qualified) {
-        dst[4*pixelId] = quantize(image[3*threadId]);
-        dst[4*pixelId+1] = quantize(image[3*threadId+1]);
-        dst[4*pixelId+2] = quantize(image[3*threadId+2]);
+    int pixelX = blockIdx.x*blockDim.x+threadIdx.x-PADDING;
+    int pixelY = blockIdx.y*blockDim.y+threadIdx.y-PADDING;
+    int pixelId = pixelY*dst_width+pixelX;
+    int buffId = (blockIdx.y*blockDim.y+threadIdx.y) * cudaParam.dst_width_padded +
+                    (blockIdx.x*blockDim.x+threadIdx.x);
+    if (pixelX >= 0 && pixelY >= 0 &&
+        pixelX < dst_width && pixelY < dst_height) {
+        dst[4*pixelId] = quantize(image[3*buffId]);
+        dst[4*pixelId+1] = quantize(image[3*buffId+1]);
+        dst[4*pixelId+2] = quantize(image[3*buffId+2]);
         dst[4*pixelId+3] = 255;
     
-        // dst[4*pixelId] = quantize(image[threadId]);
-        // dst[4*pixelId+1] = quantize(image[threadId]);
-        // dst[4*pixelId+2] = quantize(image[threadId]);
+        // dst[4*pixelId] = quantize(image[buffId]);
+        // dst[4*pixelId+1] = quantize(image[buffId]);
+        // dst[4*pixelId+2] = quantize(image[buffId]);
         // dst[4*pixelId+3] = 255;
     }
 }
 
-__global__ void
-kernel(unsigned char *src, unsigned char *dst)
+
+
+
+void Anime4kCuda::run()
 {
-    // __shared__ float image[3*THREADW*THREADH];
-    // __shared__ float preprocessed[3*THREADW*THREADH];
-    // __shared__ float luminace[THREADW*THREADH];
-    // __shared__ float gradient[THREADW*THREADH];
+    dim3 gridDim((param.dst_width_padded+THREADW-1)/THREADW, 
+                (param.dst_height_padded+THREADH-1)/THREADH);
+    dim3 blockDim(THREADW,THREADH);
+    cudaMemcpy(cudaImage, image_, param.src_bytes,cudaMemcpyHostToDevice);
 
-    float image[3*THREADW*THREADH];
-    float preprocessed[3*THREADW*THREADH];
-    float luminace[THREADW*THREADH];
-    float gradient[THREADW*THREADH];
+    enlarge<<<gridDim,blockDim>>>(cudaImage,imageBuff);
+    cudaDeviceSynchronize();
+    compute_luminance<<<gridDim,blockDim>>>(imageBuff, luminaceBuff);
+    cudaDeviceSynchronize();
+    preprocess<<<gridDim,blockDim>>>(imageBuff,luminaceBuff,preprocessedBuff);
+    cudaDeviceSynchronize();    
+    compute_luminance<<<gridDim,blockDim>>>(preprocessedBuff, luminaceBuff);
+    cudaDeviceSynchronize();
+    compute_graident<<<gridDim,blockDim>>>(luminaceBuff, gradientBuff);
+    cudaDeviceSynchronize();
+    push<<<gridDim,blockDim>>>(preprocessedBuff, gradientBuff, imageBuff);
+    cudaDeviceSynchronize();
+    output<<<gridDim,blockDim>>>(imageBuff, cudaResult);
+    cudaDeviceSynchronize();
 
-    int pixelX = blockIdx.x*REGIONW+threadIdx.x-PADDING;
-    int pixelY = blockIdx.y*REGIONH+threadIdx.y-PADDING;
-    int dst_width = cudaParam.dst_width;
-    int dst_height = cudaParam.dst_height;
-
-    bool inside_image_nopaded = true;
-    bool inside_image_padded = true;
-    bool inside_thread_nopadded = true;
-    bool inside_thread_onepadded = true;
-
-    if (pixelX < 0 || pixelX >= dst_width ||
-        pixelY < 0 || pixelY >= dst_height)
-        inside_image_nopaded = false;
-
-    if (pixelX >= dst_width+PADDING || pixelY >= dst_height+PADDING)
-        inside_image_padded = false;
-
-    if (threadIdx.x < PADDING || threadIdx.x >= blockDim.x - PADDING ||
-        threadIdx.y < PADDING || threadIdx.y >= blockDim.y - PADDING) 
-        inside_thread_nopadded = false;
-    
-    if (threadIdx.x < 1 || threadIdx.x >= blockDim.x - PADDING + 1 ||
-        threadIdx.y < 1 || threadIdx.y >= blockDim.y - PADDING + 1) 
-        inside_thread_onepadded = false;
-    
-    enlarge(src,image, inside_image_padded);
-    compute_luminance(image, luminace, inside_image_padded);
-    __syncthreads();
-    preprocess(image,luminace,preprocessed, inside_image_padded && inside_thread_onepadded);
-    compute_luminance(preprocessed, luminace, inside_image_padded);
-    __syncthreads();
-    compute_graident(luminace, gradient, inside_image_padded && inside_thread_onepadded);
-    __syncthreads();
-    push(preprocessed, gradient, image, inside_image_nopaded && inside_thread_nopadded);
-    output(image, dst, inside_image_nopaded && inside_thread_nopadded);
+    cudaMemcpy(result_, cudaResult, param.dst_bytes,cudaMemcpyDeviceToHost);
 }
-
-
-
