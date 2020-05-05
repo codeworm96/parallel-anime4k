@@ -419,10 +419,15 @@ output(float *image, unsigned char *dst, bool qualified)
 __global__ void
 kernel(unsigned char *src, unsigned char *dst)
 {
-    __shared__ float image[3*THREADW*THREADH];
-    __shared__ float preprocessed[3*THREADW*THREADH];
-    __shared__ float luminace[THREADW*THREADH];
-    __shared__ float gradient[THREADW*THREADH];
+    // __shared__ float image[3*THREADW*THREADH];
+    // __shared__ float preprocessed[3*THREADW*THREADH];
+    // __shared__ float luminace[THREADW*THREADH];
+    // __shared__ float gradient[THREADW*THREADH];
+
+    float image[3*THREADW*THREADH];
+    float preprocessed[3*THREADW*THREADH];
+    float luminace[THREADW*THREADH];
+    float gradient[THREADW*THREADH];
 
     int pixelX = blockIdx.x*REGIONW+threadIdx.x-PADDING;
     int pixelY = blockIdx.y*REGIONH+threadIdx.y-PADDING;
