@@ -466,7 +466,7 @@ void Anime4kCuda::run()
     START_ACTIVITY(ACTIVITY_LINEAR);
     enlarge<<<gridDim,blockDim>>>(cudaImage,imageBuff);
     cudaDeviceSynchronize();
-    START_ACTIVITY(ACTIVITY_LINEAR);
+    FINISH_ACTIVITY(ACTIVITY_LINEAR);
 
     START_ACTIVITY(ACTIVITY_LUM);
     compute_luminance<<<gridDim,blockDim>>>(imageBuff, luminaceBuff);
@@ -493,12 +493,12 @@ void Anime4kCuda::run()
     START_ACTIVITY(ACTIVITY_REFINE);
     push<<<gridDim,blockDim>>>(preprocessedBuff, gradientBuff, imageBuff);
     cudaDeviceSynchronize();
+    output<<<gridDim,blockDim>>>(imageBuff, cudaResult);
+    cudaDeviceSynchronize();
     FINISH_ACTIVITY(ACTIVITY_REFINE);
 
 
     START_ACTIVITY(ACTIVITY_COPY);
-    output<<<gridDim,blockDim>>>(imageBuff, cudaResult);
-    cudaDeviceSynchronize();
     cudaMemcpy(result_, cudaResult, param.dst_bytes,cudaMemcpyDeviceToHost);
     FINISH_ACTIVITY(ACTIVITY_COPY);
 
