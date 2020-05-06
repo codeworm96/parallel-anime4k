@@ -115,14 +115,10 @@ enlarge(unsigned char *image, float *enlarged)
 __global__ void
 compute_luminance(float *image, float *luminace) 
 {
-    int dst_width = cudaParam.dst_width;
-    int dst_height = cudaParam.dst_height;
-
-    int pixelX = blockIdx.x*blockDim.x+threadIdx.x-PADDING;
-    int pixelY = blockIdx.y*blockDim.y+threadIdx.y-PADDING;
-    int buffId = (blockIdx.y*blockDim.y+threadIdx.y) * cudaParam.dst_width_padded +
-                    (blockIdx.x*blockDim.x+threadIdx.x);
-    if (pixelX<dst_width+PADDING && pixelY<dst_height+PADDING) {
+    int pixelX = blockIdx.x*blockDim.x+threadIdx.x;
+    int pixelY = blockIdx.y*blockDim.y+threadIdx.y;
+    int buffId = pixelY * cudaParam.dst_width_padded + pixelX;
+    if (pixelX<cudaParam.dst_width_padded && pixelY<cudaParam.dst_height_padded) {
         luminace[buffId] = (image[3*buffId]*2+image[3*buffId+1]*3 
             + image[3*buffId]) / 6.0f;
     }
@@ -462,22 +458,48 @@ void Anime4kCuda::run()
     dim3 gridDim((param.dst_width_padded+THREADW-1)/THREADW, 
                 (param.dst_height_padded+THREADH-1)/THREADH);
     dim3 blockDim(THREADW,THREADH);
-    cudaMemcpy(cudaImage, image_, param.src_bytes,cudaMemcpyHostToDevice);
 
+    START_ACTIVITY(ACTIVITY_COPY);
+    cudaMemcpy(cudaImage, image_, param.src_bytes,cudaMemcpyHostToDevice);
+    FINISH_ACTIVITY(ACTIVITY_COPY);
+
+    START_ACTIVITY(ACTIVITY_LINEAR);
     enlarge<<<gridDim,blockDim>>>(cudaImage,imageBuff);
     cudaDeviceSynchronize();
+    START_ACTIVITY(ACTIVITY_LINEAR);
+
+    START_ACTIVITY(ACTIVITY_LUM);
     compute_luminance<<<gridDim,blockDim>>>(imageBuff, luminaceBuff);
     cudaDeviceSynchronize();
+    FINISH_ACTIVITY(ACTIVITY_LUM);
+
+    START_ACTIVITY(ACTIVITY_THINLINES);
     preprocess<<<gridDim,blockDim>>>(imageBuff,luminaceBuff,preprocessedBuff);
     cudaDeviceSynchronize();    
+    FINISH_ACTIVITY(ACTIVITY_THINLINES);
+
+
+    START_ACTIVITY(ACTIVITY_LUM);
     compute_luminance<<<gridDim,blockDim>>>(preprocessedBuff, luminaceBuff);
     cudaDeviceSynchronize();
+    FINISH_ACTIVITY(ACTIVITY_LUM);
+
+
+    START_ACTIVITY(ACTIVITY_GRADIENT);
     compute_graident<<<gridDim,blockDim>>>(luminaceBuff, gradientBuff);
     cudaDeviceSynchronize();
+    FINISH_ACTIVITY(ACTIVITY_GRADIENT);
+
+    START_ACTIVITY(ACTIVITY_REFINE);
     push<<<gridDim,blockDim>>>(preprocessedBuff, gradientBuff, imageBuff);
     cudaDeviceSynchronize();
+    FINISH_ACTIVITY(ACTIVITY_REFINE);
+
+
+    START_ACTIVITY(ACTIVITY_COPY);
     output<<<gridDim,blockDim>>>(imageBuff, cudaResult);
     cudaDeviceSynchronize();
-
     cudaMemcpy(result_, cudaResult, param.dst_bytes,cudaMemcpyDeviceToHost);
+    FINISH_ACTIVITY(ACTIVITY_COPY);
+
 }

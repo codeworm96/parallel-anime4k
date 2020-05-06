@@ -12,7 +12,7 @@
 /* Instrument different sections of program */
 static const char *activity_name[ACTIVITY_COUNT] = {
     "overhead", "decode", "linear", "luminance",
-    "thin_lines", "gradient", "refine"
+    "thin_lines", "gradient", "refine", "copy"
 };
 
 static bool tracking = false;
@@ -59,8 +59,8 @@ void show_activity(FILE *f, bool enable) {
     int a;
     double unknown = elapsed;
     for (a = 1; a < (int) ACTIVITY_COUNT; a++) {
-	if (global_accum[a] == 0.0)
-	    continue;
+	// if (global_accum[a] == 0.0)
+	//     continue;
 	unknown -= global_accum[a];
 	double ms = global_accum[a] * 1000.0;
 	double pct = global_accum[a] / elapsed * 100.0;
